@@ -76,10 +76,6 @@
           openssh
           pre-commit
           python314
-          python314Packages.black
-          python314Packages.pytest
-          python314Packages.pytest-cov
-          python314Packages.ruff
           qemu
           shellcheck
           shfmt
