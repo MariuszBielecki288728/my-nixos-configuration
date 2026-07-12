@@ -1,0 +1,41 @@
+name: Provisioning E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - flake.nix
+      - flake.lock
+      - hosts/**
+      - modules/**
+      - application/**
+      - rescue/**
+      - provisioning/**
+      - scripts/**
+      - tests/e2e/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provisioning-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: cachix/install-nix-action@7e1d5bdb99afadeb0885b07e3913a4240e12ede5
+      - name: Verify KVM
+        run: test -r /dev/kvm -a -w /dev/kvm
+      - name: Run disposable full install
+        run: nix develop -c timeout 100m tests/e2e/run.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: provisioning-e2e-logs
+          path: .e2e/logs
+          if-no-files-found: ignore
+          retention-days: 14

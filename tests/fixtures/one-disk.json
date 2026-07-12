@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "block_devices": {"blockdevices": [
+    {"name":"sda","path":"/dev/sda","size":256000000000,"model":"Safe SSD","serial":"SERIAL","tran":"sata","rm":false,"rota":false,"type":"disk","fstype":null,"mountpoints":[null],"children":[]},
+    {"name":"sdb","path":"/dev/sdb","size":16000000000,"model":"Installer","serial":"USB","tran":"usb","rm":true,"rota":false,"type":"disk","fstype":"iso9660","mountpoints":["/iso"],"children":[]}
+  ]},
+  "by_id": [
+    {"path":"/dev/disk/by-id/ata-Safe_SSD_SERIAL","target":"/dev/sda"},
+    {"path":"/dev/disk/by-id/usb-Installer_USB","target":"/dev/sdb"}
+  ]
+}

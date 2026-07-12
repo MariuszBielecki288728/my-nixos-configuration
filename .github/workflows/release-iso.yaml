@@ -1,0 +1,36 @@
+name: Release rescue ISO
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: cachix/install-nix-action@7e1d5bdb99afadeb0885b07e3913a4240e12ede5
+      - name: Validate configured public key
+        env:
+          RESCUE_SSH_PUBLIC_KEY: ${{ vars.RESCUE_SSH_PUBLIC_KEY }}
+        run: test -n "$RESCUE_SSH_PUBLIC_KEY" && grep -Eq '^ssh-(ed25519|rsa|ecdsa-[^ ]+) ' <<<"$RESCUE_SSH_PUBLIC_KEY"
+      - name: Build key-authorized ISO
+        env:
+          RESCUE_SSH_PUBLIC_KEY: ${{ vars.RESCUE_SSH_PUBLIC_KEY }}
+        run: |
+          printf '%s\n' "$RESCUE_SSH_PUBLIC_KEY" > /tmp/rescue.pub
+          scripts/build-iso.sh /tmp/rescue.pub
+          cp result/iso/*.iso nixos-mini-pc-rescue.iso
+          sha256sum nixos-mini-pc-rescue.iso > nixos-mini-pc-rescue.iso.sha256
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: true
+          files: |
+            nixos-mini-pc-rescue.iso
+            nixos-mini-pc-rescue.iso.sha256

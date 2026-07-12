@@ -1,0 +1,25 @@
+# Nix build outputs. These are symlinks into /nix/store, not source files.
+/result
+/result-*
+
+# Local development environments and test/build workspaces.
+/.direnv/
+/.e2e/
+/artifacts/
+/pxe/http-root/nixos/
+
+# Runtime secrets. Keep examples with the explicit .example suffix tracked.
+/secrets/
+/.env
+*.env
+!*.env.example
+
+# Generated images and logs, wherever a local helper writes them.
+*.qcow2
+*.raw
+*.iso
+*.log
+
+# Files copied from Windows downloads can acquire these metadata streams in WSL.
+*.Zone.Identifier
+*:Zone.Identifier

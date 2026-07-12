@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "block_devices": {"blockdevices": [
+    {"name":"sda","path":"/dev/sda","size":256000000000,"model":"SSD A","serial":"A","tran":"sata","rm":false,"rota":false,"type":"disk","fstype":null,"mountpoints":[null]},
+    {"name":"nvme0n1","path":"/dev/nvme0n1","size":512000000000,"model":"SSD B","serial":"B","tran":"nvme","rm":false,"rota":false,"type":"disk","fstype":null,"mountpoints":[null]}
+  ]},
+  "by_id": [
+    {"path":"/dev/disk/by-id/ata-SSD_A","target":"/dev/sda"},
+    {"path":"/dev/disk/by-id/nvme-SSD_B","target":"/dev/nvme0n1"}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "files.exclude": {
+    "**/.direnv": true,
+    "**/.e2e": true,
+    "**/artifacts": true,
+    "**/result": true,
+    "**/result-*": true,
+    "pxe/http-root/nixos": true
+  }
+}
