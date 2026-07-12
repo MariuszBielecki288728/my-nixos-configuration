@@ -38,17 +38,22 @@
             module
           ];
         };
-      script =
-        name: runtimeInputs:
-        # Package the repository scripts with pinned runtime tools. PROJECT_ROOT
-        # points at the immutable flake source so nix run works outside a checkout.
+      pythonProvisioning = pkgs.python314Packages.buildPythonApplication {
+        pname = "mini-pc-provision";
+        version = "0.1.0";
+        src = ./python;
+        pyproject = true;
+        build-system = [ pkgs.python314Packages.hatchling ];
+      };
+      pythonCommand =
+        name: subcommand: runtimeInputs:
         pkgs.writeShellApplication {
-          inherit name runtimeInputs;
-          excludeShellChecks = [ "SC1091" ];
+          inherit name;
+          runtimeInputs = [ pythonProvisioning ] ++ runtimeInputs;
           text = ''
             export PROJECT_ROOT=${self}
-          ''
-          + builtins.readFile (./provisioning + "/${name}.sh");
+            exec mini-pc-provision ${subcommand} "$@"
+          '';
         };
     in
     {
@@ -69,9 +74,16 @@
           nixfmt-rfc-style
           OVMF.fd
           openssh
+          pre-commit
+          python314
+          python314Packages.black
+          python314Packages.pytest
+          python314Packages.pytest-cov
+          python314Packages.ruff
           qemu
           shellcheck
           shfmt
+          uv
         ];
         shellHook = ''
           export E2E_OVMF_FD_DIR=${pkgs.OVMF.fd}/FV
@@ -102,21 +114,19 @@
             netbootIpxeScript
           ];
         };
-        discover = script "discover-hardware" [
+        provisioning = pythonProvisioning;
+        discover = pythonCommand "discover-hardware" "discover" [
           pkgs.coreutils
           pkgs.jq
           pkgs.openssh
         ];
-        select-disk = script "select-disk" [
-          pkgs.coreutils
-          pkgs.jq
-        ];
-        verify-installed = script "verify-installed" [
+        select-disk = pythonCommand "select-disk" "select-disk" [ ];
+        verify-installed = pythonCommand "verify-installed" "verify-installed" [
           pkgs.coreutils
           pkgs.curl
           pkgs.openssh
         ];
-        install = script "install" [
+        install = pythonCommand "install" "install" [
           pkgs.coreutils
           pkgs.jq
           pkgs.nix
@@ -154,22 +164,13 @@
         services = pkgs.callPackage ./tests/services.nix { };
         rescue = pkgs.callPackage ./tests/rescue.nix { };
         shell = pkgs.runCommand "shell-checks" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
-          shellcheck -x -P ${self} ${./provisioning}/*.sh ${./provisioning/lib}/*.sh ${./scripts}/*.sh ${./pxe}/build-pxe.sh ${./tests/e2e}/*.sh
+          shellcheck ${./scripts}/*.sh ${./pxe}/build-pxe.sh ${./tests}/*.sh ${./tests/e2e}/*.sh
           touch $out
         '';
-        selector =
-          pkgs.runCommand "selector-tests"
-            {
-              nativeBuildInputs = [
-                pkgs.bash
-                pkgs.coreutils
-                pkgs.jq
-              ];
-            }
-            ''
-              PROJECT_ROOT=${self} bash ${./tests}/selector.sh
-              touch $out
-            '';
+        # UV-locked Ruff, Black, pytest, and coverage run in the dedicated CI job.
+        # Keeping this flake check to the package build avoids compiling the entire
+        # Python 3.14 development-tool closure during unrelated NixOS checks.
+        python = pythonProvisioning;
         secrets =
           pkgs.runCommand "secret-helper-tests"
             {

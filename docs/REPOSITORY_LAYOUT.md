@@ -7,12 +7,13 @@ outputs.
 | --- | --- | --- | --- |
 | `flake.nix`, `flake.lock` | configuration | yes | Pinned entry points, packages, checks, and development shell |
 | `hosts/`, `modules/`, `rescue/` | configuration | yes | Installed hosts, reusable NixOS modules, and the shared rescue system |
-| `provisioning/`, `scripts/` | source | yes | Safe remote workflow and operator helpers |
+| `python/` | source | yes | UV-managed Python 3.14 provisioning package and tests |
+| `scripts/` | source | yes | Minimal shell helpers where process/device handling is natural |
 | `application/compose.yaml` | configuration | yes | Digest-pinned application topology; contains no secret values |
 | `tests/` | source | yes | Fixtures, NixOS VM tests, and disposable provisioning E2E |
 | `pxe/*.example`, `keys.example.nix`, `*.env.example` | example | yes | Templates containing visible placeholders, never live credentials |
 | `result`, `result-*` | generated | no | Nix result symlinks into `/nix/store` |
-| `.direnv/`, `.e2e/`, `artifacts/` | generated/private | no | Development cache, disposable VM workspace, and discovery reports |
+| `venv/`, `.direnv/`, `.e2e/`, `artifacts/` | generated/private | no | Python environment, development cache, disposable VM workspace, and discovery reports |
 | `pxe/http-root/nixos/` | generated | no | Copied PXE bundle served by an operator-configured HTTP server |
 | `secrets/`, `.env`, `*.env` | secret/runtime | never | Unencrypted local secret files |
 

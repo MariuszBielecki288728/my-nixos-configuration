@@ -14,6 +14,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  python:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: cachix/install-nix-action@7e1d5bdb99afadeb0885b07e3913a4240e12ede5
+        with:
+          extra_nix_config: experimental-features = nix-command flakes
+      - name: Lint, format-check, and test Python
+        run: |
+          nix shell nixpkgs#uv -c uv sync --project python --locked
+          nix shell nixpkgs#uv -c uv run --project python ruff check python
+          nix shell nixpkgs#uv -c uv run --project python black --check python
+          nix shell nixpkgs#uv -c uv run --project python pytest -c python/pyproject.toml
+
   flake:
     runs-on: ubuntu-24.04
     timeout-minutes: 90

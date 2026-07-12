@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mini-pc-provision"
+version = "0.1.0"
+description = "Safe, readable orchestration for remote NixOS mini-PC provisioning"
+readme = "README.md"
+requires-python = ">=3.14"
+authors = [{ name = "my-nixos-configuration contributors" }]
+dependencies = []
+
+[project.scripts]
+mini-pc-provision = "mini_pc_provision.cli:main"
+
+[dependency-groups]
+dev = [
+  "black==25.1.0",
+  "pre-commit==4.2.0",
+  "pytest==8.4.1",
+  "pytest-cov==6.2.1",
+  "ruff==0.12.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mini_pc_provision"]
+
+[tool.black]
+line-length = 100
+# Black 25.1 does not yet expose a py314 parser flag; the code runs on Python 3.14
+# and deliberately uses syntax compatible with Black's newest available target.
+target-version = ["py313"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["A", "ARG", "B", "C4", "D", "E", "F", "I", "N", "PERF", "PL", "PTH", "RUF", "S", "SIM", "UP"]
+ignore = ["D203", "D213", "PLR0913"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+"src/mini_pc_provision/discovery.py" = ["E501"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers --cov=mini_pc_provision --cov-report=term-missing --cov-fail-under=70"
+testpaths = ["tests"]
