@@ -74,7 +74,6 @@
           nixfmt-rfc-style
           OVMF.fd
           openssh
-          pre-commit
           python314
           qemu
           shellcheck
