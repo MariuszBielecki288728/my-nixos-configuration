@@ -1,0 +1,4 @@
+#!ipxe
+dhcp
+set base-url http://REPLACE_WITH_SERVER_IP
+chain ${base-url}/nixos/boot.ipxe

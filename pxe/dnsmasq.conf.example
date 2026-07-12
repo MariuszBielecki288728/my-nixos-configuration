@@ -1,0 +1,12 @@
+# Review for your isolated provisioning LAN. This file is never installed automatically.
+port=0
+interface=REPLACE_WITH_PROVISIONING_INTERFACE
+bind-interfaces
+dhcp-range=REPLACE_WITH_START_IP,REPLACE_WITH_END_IP,12h
+dhcp-boot=undionly.kpxe
+dhcp-match=set:efi64,option:client-arch,7
+dhcp-boot=tag:efi64,ipxe.efi
+enable-tftp
+tftp-root=REPLACE_WITH_TFTP_ROOT
+dhcp-userclass=set:ipxe,iPXE
+dhcp-boot=tag:ipxe,http://REPLACE_WITH_SERVER_IP/nixos/boot.ipxe

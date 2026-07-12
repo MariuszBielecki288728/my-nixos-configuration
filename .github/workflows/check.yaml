@@ -1,0 +1,48 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: cachix/install-nix-action@7e1d5bdb99afadeb0885b07e3913a4240e12ede5
+        with:
+          extra_nix_config: experimental-features = nix-command flakes
+      - name: Check formatting
+        run: nix fmt -- --check .
+      - name: Check repository boundaries
+        run: bash tests/repository.sh
+      - name: Evaluate flake
+        run: nix flake show --all-systems
+      - name: Build checks
+        run: nix flake check --print-build-logs
+
+  rescue-iso:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: cachix/install-nix-action@7e1d5bdb99afadeb0885b07e3913a4240e12ede5
+      - name: Build rescue delivery artifacts
+        run: nix build .#rescue-iso .#pxe-bundle --print-build-logs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: failure()
+        with:
+          name: rescue-build-logs
+          path: /tmp/nix-build-*.log
+          if-no-files-found: ignore
+          retention-days: 7
