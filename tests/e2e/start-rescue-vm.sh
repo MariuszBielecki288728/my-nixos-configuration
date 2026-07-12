@@ -39,6 +39,9 @@ firmware_vars_template="$firmware_dir/OVMF_VARS.fd"
 # boot entry to survive the reboot. The immutable code image remains read-only.
 firmware_vars="${pid_file}.vars.fd"
 cp --reflink=auto "$firmware_vars_template" "$firmware_vars"
+# Nix store firmware is read-only. QEMU must update this private per-VM copy,
+# including when CI runs as an unprivileged user rather than root.
+chmod 0600 "$firmware_vars"
 boot_once=${E2E_BOOT_ONCE:-d}
 [[ "$boot_once" == c || "$boot_once" == d ]] || {
   echo "error: E2E_BOOT_ONCE must be c (disk) or d (rescue ISO)" >&2
