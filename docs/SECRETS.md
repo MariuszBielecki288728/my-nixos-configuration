@@ -19,7 +19,8 @@ development PC.
 - The rescue key authorizes `root` in the temporary rescue ISO. Supply it while
   building the ISO with `scripts/build-iso.sh PUBLIC_KEY_FILE`.
 - The admin key authorizes the normal `admin` account after installation. Supply it
-  to `install.sh` with `--admin-key-file PUBLIC_KEY_FILE`.
+  to `mini-pc-provision install` (or `nix run .#install`) with
+  `--admin-key-file PUBLIC_KEY_FILE`.
 - They may be the same public key for a small personal installation. Separate keys
   are preferable when rescue access and routine administration have different trust
   or rotation requirements.

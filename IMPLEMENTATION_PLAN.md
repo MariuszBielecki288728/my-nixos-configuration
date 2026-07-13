@@ -1,5 +1,10 @@
 # Generic NixOS Mini-PC Provisioning Repository — Implementation Plan
 
+> Implementation note (2026-07): host-side provisioning has moved from the original
+> Bash sketches in this plan to the UV-managed Python 3.14 package under `python/`.
+> The safety architecture and CLI contracts remain authoritative; use `README.md`,
+> `docs/SCRIPTS.md`, and command `--help` output for current paths and commands.
+
 ## 1. Objective
 
 Create a repository that is the single source of truth for provisioning one or more x86_64 mini PCs, initially a Lenovo ThinkCentre M710q, without requiring a monitor or keyboard after BIOS boot settings are configured.

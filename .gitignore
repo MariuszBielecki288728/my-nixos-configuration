@@ -4,6 +4,12 @@
 
 # Local development environments and test/build workspaces.
 /.direnv/
+/venv/
+/.venv/
+/.pytest_cache/
+/.ruff_cache/
+/.coverage
+**/__pycache__/
 /.e2e/
 /artifacts/
 /pxe/http-root/nixos/

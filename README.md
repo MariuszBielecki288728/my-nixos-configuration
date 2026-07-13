@@ -34,18 +34,18 @@ reboot -> admin SSH -> systemd/Docker/HTTP verification
 The delivery method ends at SSH readiness. Discovery and installation do not inspect
 whether rescue arrived through USB, PXE, or QEMU. The interfaces are:
 
-- `discover-hardware.sh [--output FILE] [--port PORT] [--identity FILE] user@host`
+- `mini-pc-provision discover [--output FILE] [--port PORT] [--identity FILE] user@host`
   writes discovery schema `1.0`, prints only the report path on stdout, and reports
   candidates on stderr.
-- `select-disk.sh [--disk /dev/disk/by-id/...] REPORT.json` prints exactly one stable
+- `mini-pc-provision select-disk [--disk /dev/disk/by-id/...] REPORT.json` prints exactly one stable
   path on success. It excludes removable, USB, mounted, unsupported, and unstable-path
   disks; zero or multiple candidates are errors.
-- `install.sh --target root@HOST --host NAME --admin-key-file PUBLIC_KEY [...]` reruns
+- `mini-pc-provision install --target root@HOST --host NAME --admin-key-file PUBLIC_KEY [...]` reruns
   discovery, selection, confirmation, then creates a temporary wrapper flake. It never
   edits tracked configuration. `--yes` is rejected without `--ci-disposable`. Rescue
   SSH host keys are copied into the installed system so host identity remains stable
   across the installer reboot.
-- `verify-installed.sh --target admin@HOST [...]` checks SSH, `sshd`, Docker, the
+- `mini-pc-provision verify-installed --target admin@HOST [...]` checks SSH, `sshd`, Docker, the
   Compose unit, and HTTP health.
 
 Discovery reports contain DMI strings, serial numbers, network addresses, PCI/USB
@@ -75,6 +75,21 @@ Host-level bootstrap packages are `curl`, `git`, `xz-utils`, `ca-certificates`, 
 nix develop
 just check-fast
 ```
+
+The provisioning implementation targets Python 3.14 and lives in `python/`. For the
+preferred local virtual environment in the repository root:
+
+```bash
+python3 -m venv ./venv
+./venv/bin/python -m pip install uv
+./venv/bin/uv sync --project python --active
+./venv/bin/pytest -c python/pyproject.toml
+```
+
+`uv.lock` pins development dependencies. Runtime provisioning intentionally uses only
+the Python standard library and external tools supplied by Nix; no environment library
+is added because the commands have no application configuration to deserialize. Run
+`mini-pc-provision --help` and each subcommand's `--help` for detailed manuals.
 
 This repository pins NixOS 25.11, disko, and nixos-anywhere in `flake.lock`. Review any
 lock update before committing it.
@@ -115,6 +130,7 @@ that needs credentials.
 ```bash
 nix develop
 just fmt
+just test-python
 just check-fast
 nix flake check --print-build-logs
 nix build .#rescue-iso --print-build-logs

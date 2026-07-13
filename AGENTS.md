@@ -206,6 +206,26 @@ Requirements:
 - log every destructive decision;
 - keep discovery scripts read-only.
 
+## Python Conventions
+
+- Target Python 3.14 from the pinned Nixpkgs input. Do not reduce the runtime version
+  merely because a formatter exposes only a Python 3.13 parser flag.
+- Keep the installable package under `python/`, use `pyproject.toml`, and commit
+  `python/uv.lock` after reviewing dependency changes.
+- Prefer the standard library when it is clear and sufficient. Add a modern typed
+  dependency only for a concrete need; do not add configuration libraries when there
+  is no configuration model to load.
+- Use type hints, focused modules, detailed docstrings, and argparse manuals for every
+  operator-facing command.
+- Keep safety policy in pure functions. Keep subprocess calls argument-vector based;
+  never use `shell=True` for locally constructed commands.
+- Test pure policy with realistic fixtures and process boundaries with temporary files
+  or executable fixtures. Prefer integration-style tests over extensive mocking.
+- Run `just fmt`, `just lint`, and `just test-python` for Python changes. Ruff, Black,
+  pytest, coverage, and pre-commit configuration are mandatory CI inputs.
+- For local setup, create `./venv` with `python3 -m venv ./venv`, install UV into it,
+  then run `./venv/bin/uv sync --project python --active`.
+
 ## Rescue ISO Requirements
 
 The shared rescue system must:
