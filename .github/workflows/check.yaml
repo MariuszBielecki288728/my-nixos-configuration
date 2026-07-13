@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: cachix/install-nix-action@7e1d5bdb99afadeb0885b07e3913a4240e12ede5
         with:
           extra_nix_config: experimental-features = nix-command flakes
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c
         with:
           extra_nix_config: experimental-features = nix-command flakes
@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c
       - name: Build rescue delivery artifacts
         run: nix build .#rescue-iso .#pxe-bundle --print-build-logs
