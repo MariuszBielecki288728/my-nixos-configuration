@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-      - uses: cachix/install-nix-action@7e1d5bdb99afadeb0885b07e3913a4240e12ede5
+      - uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c
       - name: Validate configured public key
         env:
           RESCUE_SSH_PUBLIC_KEY: ${{ vars.RESCUE_SSH_PUBLIC_KEY }}
