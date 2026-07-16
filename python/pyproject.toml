@@ -18,7 +18,7 @@ mini-pc-provision = "mini_pc_provision.cli:main"
 dev = [
   "black==26.5.1",
   "pre-commit==4.2.0",
-  "pytest==8.4.1",
+  "pytest==9.1.1",
   "pytest-cov==7.1.0",
   "ruff==0.12.4",
 ]
