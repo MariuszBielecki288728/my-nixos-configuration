@@ -111,6 +111,7 @@ def test_temporary_services_record_and_cleanup_owned_state(tmp_path: Path, monke
     executable(tmp_path / "dnsmasq", sleeper)
     fake_python = executable(tmp_path / "python-fixture", sleeper)
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr("mini_pc_provision.network.os.geteuid", lambda: 0)
     monkeypatch.setattr("mini_pc_provision.network.sys.executable", str(fake_python))
     directory = tmp_path / "state"
     services = NetworkServices.start(
@@ -126,3 +127,15 @@ def test_temporary_services_record_and_cleanup_owned_state(tmp_path: Path, monke
     time.sleep(0.05)
     with pytest.raises(ProvisioningError, match="unreadable"):
         NetworkServices.load(tmp_path / "missing.json")
+
+
+def test_temporary_services_require_root(tmp_path: Path, monkeypatch) -> None:
+    """Starting DHCP/TFTP as an unprivileged operator fails before any mutation."""
+    monkeypatch.setattr("mini_pc_provision.network.os.geteuid", lambda: 1000)
+    with pytest.raises(ProvisioningError, match="requires root"):
+        NetworkServices.start(
+            interface="enp3s0",
+            bundle=tmp_path / "bundle",
+            directory=tmp_path / "state",
+            log_path=tmp_path / "services.log",
+        )
