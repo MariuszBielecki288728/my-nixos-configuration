@@ -41,10 +41,14 @@ whether rescue arrived through USB, PXE, or QEMU. The interfaces are:
   path on success. It excludes removable, USB, mounted, unsupported, and unstable-path
   disks; zero or multiple candidates are errors.
 - `mini-pc-provision install --target root@HOST --host NAME --admin-key-file PUBLIC_KEY [...]` reruns
-  discovery, selection, confirmation, then creates a temporary wrapper flake. It never
-  edits tracked configuration. `--yes` is rejected without `--ci-disposable`. Rescue
-  SSH host keys are copied into the installed system so host identity remains stable
-  across the installer reboot.
+  discovery, selection, and confirmation, then re-discovers and compares the stable
+  path, aliases, model, serial, size, and mount state immediately before creating a
+  temporary wrapper flake. `--yes` requires `--ci-disposable`, `CI=true`, QEMU DMI,
+  host `e2e-target`, and the exact `virtio-nixos-e2e` identity. Tracked configuration
+  is never edited, and rescue SSH host keys are copied across the reboot.
+- `mini-pc-provision provision` composes prerequisite, temporary-network, readiness,
+  discovery, selection, installation, verification, and cleanup stages. Supporting
+  stages remain independently callable through their documented subcommands.
 - `mini-pc-provision verify-installed --target admin@HOST [...]` checks SSH, `sshd`, Docker, the
   Compose unit, and HTTP health.
 
@@ -135,6 +139,7 @@ just check-fast
 nix flake check --print-build-logs
 nix build .#rescue-iso --print-build-logs
 nix build .#pxe-bundle --print-build-logs
+just pxe-test
 ```
 
 Checks cover formatting/evaluation, ShellCheck, selector fixtures, target closures,
@@ -152,6 +157,52 @@ KVM is used when writable; otherwise QEMU TCG is selected and can be very slow. 
 does not reliably expose raw USB devices. Full E2E is mandatory in GitHub Actions and
 may be skipped locally when KVM or time is unavailable, while fast checks should still
 run.
+
+## Direct Ethernet provisioning
+
+The primary transport is one dedicated cable between development PC and target. It
+uses only the isolated `192.168.77.0/24` network: the PC owns `192.168.77.1`, and the
+rescue receives `192.168.77.2` from temporary DHCP.
+
+Isolation prevents the temporary DHCP server from competing with a home router. The
+orchestrator rejects the default-route interface, virtual interfaces, ambiguous
+physical NICs, an existing global IPv4 address, and any local UDP/67 listener. It does
+not rewrite router, Windows, or persistent host network configuration. The Lenovo
+needs no Internet access: TFTP/HTTP serve pinned rescue artifacts locally, and
+`nixos-anywhere` copies the built installation closure over SSH.
+
+Review the dedicated interface with `ip -brief link`, connect the cable, enable UEFI
+PXE in firmware, and run from the repository. Root is required for DHCP/TFTP and
+temporary interface addressing. When using `sudo`, supply absolute key paths rather
+than relying on root's home directory:
+
+```bash
+sudo -E just -- provision-m710q \
+  --interface REPLACE_WITH_DEDICATED_ETHERNET \
+  --identity /home/REPLACE_WITH_USER/.ssh/id_ed25519 \
+  --rescue-key-file /home/REPLACE_WITH_USER/.ssh/id_ed25519.pub \
+  --admin-key-file /home/REPLACE_WITH_USER/.ssh/id_ed25519.pub
+```
+
+The command builds a key-authorized PXE bundle from pinned inputs, optionally sends
+Wake-on-LAN with `--wake-mac`, waits for rescue SSH, displays disk identity, requires
+the full stable path, installs, and verifies SSH, Docker, the Compose unit, and HTTP.
+DHCP/TFTP/HTTP and the owned temporary address are stopped after success or failure.
+
+Every attempt creates a private ignored directory under `artifacts/sessions/` with
+metadata, environment, prerequisite/network/readiness reports, `discovery.json`,
+`selected-disk.json`, installation and verification reports, a provisioning log, and
+a best-effort journal. Failed sessions remain available; cleanup never removes them.
+
+On the current WSL2 setup only the WSL default-route `eth0` is visible; the Windows
+cable adapter is not exposed as an independent Linux NIC. The safety policy therefore
+refuses physical direct-cable DHCP from this WSL instance. Use native Linux, an
+explicit Windows networking arrangement outside this repository, or another Linux
+PXE host. `just pxe-test` still works in WSL by using a disposable TAP only.
+
+Home-LAN transport remains future work. Until a separate backend exists, use the
+low-level `discover` and `install` commands with a router-provided address; never start
+the direct-Ethernet DHCP backend on an existing LAN.
 
 ## Physical installation
 
@@ -175,7 +226,8 @@ nix run .#install -- \
   --target root@nixos-rescue.local \
   --host m710q \
   --admin-key-file ~/.ssh/id_ed25519.pub \
-  --identity ~/.ssh/id_ed25519
+  --identity ~/.ssh/id_ed25519 \
+  --installed-target admin@m710q.local
 ```
 
 If multiple safe internal disks remain, discovery succeeds but installation stops.
@@ -189,10 +241,17 @@ granted because it is root-equivalent.
 
 ## PXE/iPXE
 
-`nix build .#pxe-bundle` generates kernel, initrd, a store-path-correct iPXE script,
-and a hash manifest from the same rescue module. See `pxe/README.md`. The dnsmasq file
-is an opt-in example and never rewrites host or router DHCP configuration. Confirm
-firmware fallback behavior before choosing PXE-first boot priority.
+`nix build .#pxe-bundle` generates pinned `ipxe.efi`, separate TFTP and HTTP roots,
+a store-path-correct iPXE script, and a hash manifest from the same rescue module. See
+`pxe/README.md`. CI boots the complete UEFI/DHCP/TFTP/iPXE/HTTP path, reaches SSH and
+discovery, and proves the disposable target disk unchanged. The dnsmasq example never
+rewrites host or router DHCP configuration.
+
+The M710q (10MQ, Pentium G4400T) has no AMT, vPro, remote KVM, or remote BIOS in this
+design. Wake-on-LAN is optional and cannot choose a boot device. The preferred order
+is Network/PXE, USB, internal SSD, based on current target testing that absent PXE
+falls through; validate the exact firmware before relying on it. USB, internal SSD,
+PXE remains the conservative alternative.
 
 ## CI and releases
 

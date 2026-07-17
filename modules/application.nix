@@ -5,9 +5,18 @@
   ...
 }:
 let
-  # Tests replace only this exact digest reference, leaving the Compose topology
-  # identical to production while avoiding a registry dependency in VM tests.
-  productionImage = "docker.io/library/nginx@sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284";
+  # The source is a registry manifest-list digest. pullImage resolves the pinned
+  # linux/amd64 image into a fixed-output archive on the development/CI builder.
+  applicationImageArchive = pkgs.dockerTools.pullImage {
+    imageName = "docker.io/library/nginx";
+    imageDigest = "sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284";
+    hash = "sha256-PU0wZ7IHLbKTC8b2bNONvtVBbLX8ruKjwb3UWYAQv3w=";
+    finalImageName = "docker.io/library/nginx";
+    finalImageTag = "pinned-30f1c0d78e0a";
+  };
+  # Docker records this content digest when loading the fixed archive. Compose
+  # uses it with pull_policy=never, so the installed target cannot contact a registry.
+  productionImage = "docker.io/library/nginx@sha256:dc8e6d3967a06c0c9bb10d16cfc5770686de05da4c34d4224ef2aec61142e8f1";
   composeFile = pkgs.writeText "mini-pc-compose.yaml" (
     builtins.replaceStrings [ productionImage ] [ config.my.application.image ] (
       builtins.readFile ../application/compose.yaml
@@ -19,6 +28,11 @@ in
     type = lib.types.str;
     default = productionImage;
     description = "Immutable application image; tests may override with a local preloaded image";
+  };
+  options.my.application.imageArchive = lib.mkOption {
+    type = lib.types.nullOr lib.types.path;
+    default = applicationImageArchive;
+    description = "Fixed Docker archive loaded before Compose; tests may provide a local image";
   };
 
   config = {
@@ -34,9 +48,13 @@ in
       after = [
         "docker.service"
         "network-online.target"
-      ];
+      ]
+      ++ lib.optional (config.my.application.imageArchive != null) "mini-pc-image.service";
       wants = [ "network-online.target" ];
-      requires = [ "docker.service" ];
+      requires = [
+        "docker.service"
+      ]
+      ++ lib.optional (config.my.application.imageArchive != null) "mini-pc-image.service";
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
@@ -46,6 +64,18 @@ in
         TimeoutStartSec = 300;
         TimeoutStopSec = 120;
       };
+    };
+    systemd.services.mini-pc-image = lib.mkIf (config.my.application.imageArchive != null) {
+      description = "Load the pinned application image from the Nix closure";
+      after = [ "docker.service" ];
+      requires = [ "docker.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        ${pkgs.docker_29}/bin/docker load < ${config.my.application.imageArchive}
+      '';
     };
   };
 }

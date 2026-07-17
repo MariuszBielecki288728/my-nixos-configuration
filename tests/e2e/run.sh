@@ -73,8 +73,9 @@ after=$(sha256sum "$WORK/target.raw" | cut -d' ' -f1)
 
 "$ROOT/tests/e2e/start-rescue-vm.sh" "$iso" "$WORK/target.raw" "$WORK/pid" "$WORK/qemu.log"
 "$ROOT/tests/e2e/wait-for-ssh.sh" root@127.0.0.1 2222 "$WORK/id_ed25519" 300
-nix run "path:$ROOT#install" -- \
+CI=true nix run "path:$ROOT#install" -- \
   --target root@127.0.0.1 --port 2222 --host e2e-target \
+  --installed-target admin@127.0.0.1 \
   --disk /dev/disk/by-id/virtio-nixos-e2e \
   --identity "$WORK/id_ed25519" --admin-key-file "$WORK/id_ed25519.pub" \
   --application-env-file "$WORK/compose.env" \

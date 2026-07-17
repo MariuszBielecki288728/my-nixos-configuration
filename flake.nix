@@ -52,12 +52,22 @@
           runtimeInputs = [ pythonProvisioning ] ++ runtimeInputs;
           text = ''
             export PROJECT_ROOT=${self}
+            if [[ -d "$PWD/.git" && -f "$PWD/flake.nix" ]]; then
+              export PROJECT_CHECKOUT_ROOT="$PWD"
+            fi
             exec mini-pc-provision ${subcommand} "$@"
           '';
         };
+      mkPxeBundle =
+        rescueConfig:
+        pkgs.callPackage ./pxe/bundle.nix {
+          inherit rescueConfig;
+          revision = self.rev or self.dirtyRev or "unknown";
+          nixpkgsRevision = nixpkgs.rev or "unknown";
+        };
     in
     {
-      formatter.${system} = pkgs.nixfmt-rfc-style;
+      formatter.${system} = pkgs.nixfmt-tree;
 
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
@@ -66,12 +76,14 @@
           coreutils
           curl
           docker-compose
+          dnsmasq
           git
           gnused
           iproute2
+          ipxe
           jq
           just
-          nixfmt-rfc-style
+          nixfmt-tree
           OVMF.fd
           openssh
           python314
@@ -79,6 +91,7 @@
           shellcheck
           shfmt
           uv
+          wakeonlan
         ];
         shellHook = ''
           export E2E_OVMF_FD_DIR=${pkgs.OVMF.fd}/FV
@@ -128,10 +141,14 @@
           pkgs.openssh
         ];
         nixos-anywhere = nixos-anywhere.packages.${system}.default;
-        pxe-bundle = pkgs.callPackage ./pxe/bundle.nix {
-          rescueConfig = self.nixosConfigurations.rescue-pxe.config;
-          revision = self.rev or self.dirtyRev or "unknown";
-        };
+        pxe-bundle = mkPxeBundle self.nixosConfigurations.rescue-pxe.config;
+        provision = pythonCommand "provision-mini-pc" "provision" [
+          pkgs.dnsmasq
+          pkgs.iproute2
+          pkgs.nix
+          pkgs.openssh
+          pkgs.wakeonlan
+        ];
       };
 
       apps.${system} = {
@@ -150,7 +167,14 @@
           program = lib.getExe self.packages.${system}.install;
           meta.description = "Perform confirmed remote installation with nixos-anywhere";
         };
+        provision = {
+          type = "app";
+          program = lib.getExe self.packages.${system}.provision;
+          meta.description = "Run session-based direct-Ethernet PXE provisioning";
+        };
       };
+
+      lib.${system}.mkPxeBundle = mkPxeBundle;
 
       checks.${system} = {
         generic-system = self.nixosConfigurations.generic-mini-pc.config.system.build.toplevel;
@@ -159,7 +183,7 @@
         services = pkgs.callPackage ./tests/services.nix { };
         rescue = pkgs.callPackage ./tests/rescue.nix { };
         shell = pkgs.runCommand "shell-checks" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
-          shellcheck ${./scripts}/*.sh ${./pxe}/build-pxe.sh ${./tests}/*.sh ${./tests/e2e}/*.sh
+          shellcheck ${./scripts}/*.sh ${./pxe}/build-pxe.sh ${./tests}/*.sh ${./tests/e2e}/*.sh ${./tests/pxe}/*.sh
           touch $out
         '';
         # UV-locked Ruff, Black, pytest, and coverage run in the dedicated CI job.

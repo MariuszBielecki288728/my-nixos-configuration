@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .discovery import discover
-from .disks import select_disk
+from .disks import DiskCandidate, select_disk, validate_candidate_unchanged
 from .errors import ProvisioningError
 from .process import run
 from .remote import SshConnection
@@ -75,11 +75,88 @@ class InstallOptions:
     admin_key_file: Path
     requested_disk: str | None = None
     application_env_file: Path | None = None
+    installed_target: str | None = None
     assume_yes: bool = False
     ci_disposable: bool = False
 
 
-def install(options: InstallOptions) -> None:
+CI_HOST = "e2e-target"
+CI_DISK = "/dev/disk/by-id/virtio-nixos-e2e"
+
+
+def validate_ci_disposable(
+    options: InstallOptions,
+    report: object,
+    candidate: DiskCandidate,
+    environment: dict[str, str] | os._Environ[str] | None = None,
+) -> None:
+    """Permit noninteractive erasure only for the repository's known QEMU target."""
+    variables = environment if environment is not None else os.environ
+    raw = getattr(report, "raw", {})
+    dmi = raw.get("dmi", {}) if isinstance(raw, dict) else {}
+    identity = " ".join(
+        str(dmi.get(field, "")) for field in ("vendor", "product_name", "product_version")
+    ).lower()
+    if variables.get("CI", "").lower() not in {"1", "true"}:
+        raise ProvisioningError("--ci-disposable requires the CI environment")
+    if "qemu" not in identity:
+        raise ProvisioningError("--ci-disposable requires QEMU DMI identity")
+    if options.host != CI_HOST:
+        raise ProvisioningError(f"--ci-disposable requires host configuration {CI_HOST}")
+    if candidate.stable_path != CI_DISK or candidate.disk.serial != "nixos-e2e":
+        raise ProvisioningError(f"--ci-disposable requires virtual disk {CI_DISK}")
+
+
+def installed_target_candidates(
+    options: InstallOptions, report: object
+) -> tuple[SshConnection, ...]:
+    """Plan installed SSH fallbacks: explicit, mDNS, then discovered IPv4."""
+    raw = getattr(report, "raw", {})
+    targets: list[str] = []
+    if options.installed_target:
+        targets.append(options.installed_target)
+    targets.append(f"admin@{options.host}.local")
+    if isinstance(raw, dict):
+        for interface in raw.get("network_interfaces", []):
+            if interface.get("ifname") == "lo":
+                continue
+            targets.extend(
+                f"admin@{address.get('local')}"
+                for address in interface.get("addr_info", [])
+                if address.get("family") == "inet" and address.get("scope") == "global"
+            )
+    connections: list[SshConnection] = []
+    for target in targets:
+        if not isinstance(target, str) or not target.startswith("admin@"):
+            raise ProvisioningError("installed target must explicitly use admin@HOST")
+        if target not in {item.target for item in connections}:
+            connections.append(
+                SshConnection(target, options.connection.port, options.connection.identity)
+            )
+    return tuple(connections)
+
+
+def wait_for_installed_target(
+    connections: tuple[SshConnection, ...], timeout: int
+) -> SshConnection:
+    """Poll all installed-target fallbacks within one shared deadline."""
+    print(
+        "Installed SSH candidates: " + ", ".join(item.target for item in connections),
+        file=os.sys.stderr,
+    )
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for connection in connections:
+            try:
+                connection.execute("true")
+                return connection
+            except ProvisioningError:
+                continue
+        time.sleep(2)
+    raise ProvisioningError("installed-system SSH did not become ready at any candidate target")
+
+
+def install(options: InstallOptions) -> SshConnection:  # noqa: PLR0912, PLR0915
     """Discover, confirm, install, reboot, and verify one target host."""
     if not options.connection.target.startswith("root@"):
         raise ProvisioningError("rescue target must explicitly use root@HOST")
@@ -100,6 +177,8 @@ def install(options: InstallOptions) -> None:
         report_path, report = discover(options.connection, temporary / "discovery.json")
         candidate = select_disk(report, options.requested_disk)
         disk = candidate.stable_path
+        if options.assume_yes:
+            validate_ci_disposable(options, report, candidate)
         print("DESTRUCTIVE INSTALLATION SUMMARY", file=os.sys.stderr)
         print(f"  Rescue target: {options.connection.target}", file=os.sys.stderr)
         print(f"  NixOS configuration: {options.host}", file=os.sys.stderr)
@@ -116,6 +195,12 @@ def install(options: InstallOptions) -> None:
                 raise ProvisioningError("confirmation did not exactly match the selected disk")
         else:
             print("CI disposable-disk confirmation bypass is active", file=os.sys.stderr)
+
+        # Close the confirmation-to-erasure race with a fresh remote snapshot.
+        _, current_report = discover(options.connection, temporary / "revalidation.json")
+        candidate = validate_candidate_unchanged(candidate, current_report)
+        if options.assume_yes:
+            validate_ci_disposable(options, current_report, candidate)
 
         (temporary / "flake.nix").write_text(
             "{\n"
@@ -175,12 +260,9 @@ def install(options: InstallOptions) -> None:
         )
         run(anywhere)
 
-    installed = SshConnection(
-        target=f"admin@{options.connection.target.partition('@')[2]}",
-        port=options.connection.port,
-        identity=options.connection.identity,
-    )
+    installed = wait_for_installed_target(installed_target_candidates(options, report), timeout=600)
     verify_installed(installed, timeout=600)
+    return installed
 
 
 def verify_installed(connection: SshConnection, timeout: int = 300) -> None:

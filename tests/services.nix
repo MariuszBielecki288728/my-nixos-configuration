@@ -1,23 +1,4 @@
 { pkgs }:
-let
-  testImage = pkgs.dockerTools.buildLayeredImage {
-    name = "mini-pc-test";
-    tag = "ci-immutable";
-    contents = [ pkgs.busybox ];
-    extraCommands = ''
-      mkdir -p www
-      echo healthy > www/index.html
-    '';
-    config.Cmd = [
-      "httpd"
-      "-f"
-      "-p"
-      "80"
-      "-h"
-      "/www"
-    ];
-  };
-in
 pkgs.testers.runNixOSTest {
   name = "mini-pc-services";
   nodes.machine = { lib, ... }: {
@@ -31,16 +12,6 @@ pkgs.testers.runNixOSTest {
     virtualisation.memorySize = 2048;
     virtualisation.diskSize = 4096;
     networking.firewall.enable = lib.mkForce false;
-    my.application.image = "mini-pc-test:ci-immutable";
-    systemd.services.load-test-image = {
-      description = "Load immutable local application test image";
-      after = [ "docker.service" ];
-      requires = [ "docker.service" ];
-      before = [ "mini-pc-application.service" ];
-      requiredBy = [ "mini-pc-application.service" ];
-      serviceConfig.Type = "oneshot";
-      script = "${pkgs.docker_29}/bin/docker load < ${testImage}";
-    };
     system.stateVersion = "25.11";
   };
   testScript = ''
@@ -51,6 +22,8 @@ pkgs.testers.runNixOSTest {
     machine.succeed("sshd -T | grep -qx 'kbdinteractiveauthentication no'")
     machine.succeed("sshd -T | grep -qx 'permitrootlogin no'")
     machine.wait_for_unit("docker.service")
+    machine.wait_for_unit("mini-pc-image.service")
+    machine.succeed("docker image inspect docker.io/library/nginx@sha256:dc8e6d3967a06c0c9bb10d16cfc5770686de05da4c34d4224ef2aec61142e8f1")
     machine.wait_until_succeeds("systemctl is-active mini-pc-application.service", timeout=300)
     machine.wait_until_succeeds("curl --fail --silent http://127.0.0.1:8080/ >/dev/null", timeout=120)
     machine.succeed("test $(stat -c %a /var/lib/mini-pc/secrets) = 700")

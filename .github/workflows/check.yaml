@@ -38,7 +38,7 @@ jobs:
         with:
           extra_nix_config: experimental-features = nix-command flakes
       - name: Check formatting
-        run: nix fmt -- --check .
+        run: nix fmt -- --ci .
       - name: Check repository boundaries
         run: bash tests/repository.sh
       - name: Evaluate flake
@@ -61,3 +61,21 @@ jobs:
           path: /tmp/nix-build-*.log
           if-no-files-found: ignore
           retention-days: 7
+
+  pxe-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c
+      - name: Verify KVM
+        run: test -r /dev/kvm -a -w /dev/kvm
+      - name: Boot shared rescue through UEFI PXE
+        run: nix develop -c timeout 35m tests/pxe/run.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: pxe-integration-logs
+          path: .e2e/pxe/logs
+          if-no-files-found: ignore
+          retention-days: 14
