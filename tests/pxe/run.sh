@@ -18,6 +18,7 @@ fi
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 WORK="$ROOT/.e2e/pxe"
+export SSH_USER_KNOWN_HOSTS_FILE="$WORK/known_hosts"
 TAP="mpcp$$"
 SERVER=192.168.77.1
 CLIENT=192.168.77.2
@@ -59,6 +60,7 @@ printf '%s\n' \
 printf '%s\n' '{' "  my.rescue.authorizedKeys = [ $key_nix ];" '}' >"$WORK/key.nix"
 nix build "path:$WORK" -o "$WORK/bundle" --print-build-logs
 BUNDLE=$(readlink -f "$WORK/bundle")
+dnsmasq_bin=$(command -v dnsmasq)
 
 truncate -s 1G "$WORK/target.raw"
 before=$(sha256sum "$WORK/target.raw" | cut -d' ' -f1)
@@ -83,7 +85,7 @@ enable-tftp
 tftp-root=$BUNDLE/tftp
 EOF
 # shellcheck disable=SC2024 # The unprivileged caller intentionally owns this log.
-sudo dnsmasq --keep-in-foreground --conf-file="$WORK/dnsmasq.conf" \
+sudo "$dnsmasq_bin" --keep-in-foreground --conf-file="$WORK/dnsmasq.conf" \
   >"$WORK/dnsmasq.log" 2>&1 &
 dnsmasq_pid=$!
 python3 -m http.server 8081 --bind "$SERVER" --directory "$BUNDLE/http" \
