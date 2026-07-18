@@ -112,6 +112,7 @@ def test_temporary_services_record_and_cleanup_owned_state(tmp_path: Path, monke
     fake_python = executable(tmp_path / "python-fixture", sleeper)
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setattr("mini_pc_provision.network.os.geteuid", lambda: 0)
+    monkeypatch.setattr("mini_pc_provision.network.os.chown", lambda *_arguments: None)
     monkeypatch.setattr("mini_pc_provision.network.sys.executable", str(fake_python))
     directory = tmp_path / "state"
     services = NetworkServices.start(
@@ -125,14 +126,24 @@ def test_temporary_services_record_and_cleanup_owned_state(tmp_path: Path, monke
     assert services.state["address_added"] is True
     assert services.state["ignored_client_macs"] == ["02:00:00:00:00:01"]
     assert services.state["target_mac"] == "02:00:00:00:00:02"
+    lease_file = Path(services.state["lease_file"])
+    lease_directory = Path(services.state["lease_directory"])
     config = (directory / "dnsmasq.conf").read_text(encoding="utf-8")
-    assert "dhcp-leasefile=/dev/null" in config
-    assert "dhcp-leasefile=\n" not in config
+    assert f"dhcp-leasefile={lease_file}" in config
     assert config.count("dhcp-host=02:00:00:00:00:01,ignore") == 1
     assert "dhcp-host=02:00:00:00:00:02,192.168.77.2" in config
+    assert "dhcp-boot=" in config
+    original_dnsmasq_pid = services.state["dnsmasq_pid"]
+    services.enter_dhcp_only()
+    config = (directory / "dnsmasq.conf").read_text(encoding="utf-8")
+    assert services.state["mode"] == "dhcp-only"
+    assert services.state["dnsmasq_pid"] != original_dnsmasq_pid
+    assert "dhcp-boot=" not in config
+    assert "enable-tftp" not in config
     assert NetworkServices.load(services.state_path).state["interface"] == "enp3s0"
     services.cleanup()
     assert services.state["cleaned"] is True
+    assert not lease_directory.exists()
     time.sleep(0.05)
     with pytest.raises(ProvisioningError, match="unreadable"):
         NetworkServices.load(tmp_path / "missing.json")

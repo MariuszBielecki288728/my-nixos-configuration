@@ -199,7 +199,12 @@ session's temporary dnsmasq configuration.
 The command builds a key-authorized PXE bundle from pinned inputs, optionally sends
 Wake-on-LAN with `--wake-mac`, waits for rescue SSH, displays disk identity, requires
 the full stable path, installs, and verifies SSH, Docker, the Compose unit, and HTTP.
-DHCP/TFTP/HTTP and the owned temporary address are stopped after success or failure.
+Installation reboot is deliberately deferred until the temporary network switches
+from PXE/TFTP/HTTP delivery to DHCP-only mode. This lets PXE-first firmware fall
+through to the installed disk while retaining the fixed address for verification.
+Rescue and installed SSH identities use a private per-session trust file that is reset
+at this transition. All temporary network services and the owned address are stopped
+after success or failure.
 When all three key flags are omitted, it creates and reuses
 `~/.ssh/mini_pc_provision_ed25519` for the invoking user, including when run through
 `sudo`. To use existing credentials, pass `--identity`, `--rescue-key-file`, and

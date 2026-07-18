@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -128,6 +129,12 @@ def collect_journal(connection: SshConnection | None, destination: Path) -> None
     destination.chmod(0o600)
 
 
+def reset_known_hosts(path: Path) -> None:
+    """Create or clear one private trust file at a deliberate boot-identity boundary."""
+    path.write_text("", encoding="utf-8")
+    path.chmod(0o600)
+
+
 def provision(options: ProvisionOptions) -> Path:  # pragma: no cover  # noqa: PLR0915
     """Run the complete direct-Ethernet pipeline and always finalize evidence and cleanup."""
     if options.timeout <= 0:
@@ -136,6 +143,10 @@ def provision(options: ProvisionOptions) -> Path:  # pragma: no cover  # noqa: P
     session = ProvisioningSession.create(
         root, host=options.host, transport="direct-ethernet", delivery="pxe"
     )
+    known_hosts = session.directory / "ssh-known-hosts"
+    reset_known_hosts(known_hosts)
+    previous_known_hosts = os.environ.get("SSH_USER_KNOWN_HOSTS_FILE")
+    os.environ["SSH_USER_KNOWN_HOSTS_FILE"] = str(known_hosts)
     network: NetworkServices | None = None
     rescue: SshConnection | None = None
     journal_connection: SshConnection | None = None
@@ -184,6 +195,14 @@ def provision(options: ProvisionOptions) -> Path:  # pragma: no cover  # noqa: P
         session.log(f"selected reviewed disk {candidate.stable_path}")
 
         installation_started = utc_now()
+
+        def prepare_installed_reboot() -> None:
+            if network is None:  # pragma: no cover - guarded by the active pipeline
+                raise ProvisioningError("temporary network is unavailable before reboot")
+            session.log("switching PXE delivery to DHCP-only mode before installed reboot")
+            network.enter_dhcp_only()
+            session.write_json("network.json", network.state)
+
         installed = install(
             InstallOptions(
                 connection=rescue,
@@ -192,6 +211,8 @@ def provision(options: ProvisionOptions) -> Path:  # pragma: no cover  # noqa: P
                 requested_disk=candidate.stable_path,
                 application_env_file=options.application_env_file,
                 installed_target=options.installed_target or f"admin@{CLIENT_ADDRESS}",
+                before_reboot=prepare_installed_reboot,
+                after_reboot=lambda: reset_known_hosts(known_hosts),
             )
         )
         journal_connection = installed
@@ -255,6 +276,12 @@ def provision(options: ProvisionOptions) -> Path:  # pragma: no cover  # noqa: P
         session.finalize("failed", str(error))
         raise
     finally:
-        if network:
-            session.log("stopping temporary DHCP/TFTP/HTTP services")
-            network.cleanup()
+        try:
+            if network:
+                session.log("stopping temporary provisioning network services")
+                network.cleanup()
+        finally:
+            if previous_known_hosts is None:
+                os.environ.pop("SSH_USER_KNOWN_HOSTS_FILE", None)
+            else:
+                os.environ["SSH_USER_KNOWN_HOSTS_FILE"] = previous_known_hosts
