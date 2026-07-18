@@ -173,21 +173,21 @@ needs no Internet access: TFTP/HTTP serve pinned rescue artifacts locally, and
 
 Review the dedicated interface with `ip -brief link`, connect the cable, enable UEFI
 PXE in firmware, and run from the repository. Root is required for DHCP/TFTP and
-temporary interface addressing. When using `sudo`, supply absolute key paths rather
-than relying on root's home directory:
+temporary interface addressing:
 
 ```bash
 sudo -E just -- provision-m710q \
-  --interface REPLACE_WITH_DEDICATED_ETHERNET \
-  --identity /home/REPLACE_WITH_USER/.ssh/id_ed25519 \
-  --rescue-key-file /home/REPLACE_WITH_USER/.ssh/id_ed25519.pub \
-  --admin-key-file /home/REPLACE_WITH_USER/.ssh/id_ed25519.pub
+  --interface REPLACE_WITH_DEDICATED_ETHERNET
 ```
 
 The command builds a key-authorized PXE bundle from pinned inputs, optionally sends
 Wake-on-LAN with `--wake-mac`, waits for rescue SSH, displays disk identity, requires
 the full stable path, installs, and verifies SSH, Docker, the Compose unit, and HTTP.
 DHCP/TFTP/HTTP and the owned temporary address are stopped after success or failure.
+When all three key flags are omitted, it creates and reuses
+`~/.ssh/mini_pc_provision_ed25519` for the invoking user, including when run through
+`sudo`. To use existing credentials, pass `--identity`, `--rescue-key-file`, and
+`--admin-key-file` together. Private keys are never written under the repository.
 
 Every attempt creates a private ignored directory under `artifacts/sessions/` with
 metadata, environment, prerequisite/network/readiness reports, `discovery.json`,
