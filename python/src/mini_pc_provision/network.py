@@ -197,9 +197,9 @@ class NetworkServices:
                     f"dhcp-range={CLIENT_ADDRESS},{CLIENT_ADDRESS},255.255.255.0,1h",
                     f"dhcp-option=3,{SERVER_ADDRESS}",
                     f"dhcp-option=6,{SERVER_ADDRESS}",
-                    # Keep lease state in memory. The session is deliberately mode
-                    # 0700, while dnsmasq drops privileges after binding.
-                    "dhcp-leasefile=",
+                    # Keep lease state only in this process. An empty value makes
+                    # dnsmasq fall back to its persistent system lease database.
+                    "dhcp-leasefile=/dev/null",
                     "dhcp-match=set:efi64,option:client-arch,7",
                     "dhcp-match=set:efi64,option:client-arch,9",
                     f"dhcp-boot=tag:efi64,ipxe.efi,,{SERVER_ADDRESS}",

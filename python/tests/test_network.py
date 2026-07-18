@@ -126,6 +126,8 @@ def test_temporary_services_record_and_cleanup_owned_state(tmp_path: Path, monke
     assert services.state["ignored_client_macs"] == ["02:00:00:00:00:01"]
     assert services.state["target_mac"] == "02:00:00:00:00:02"
     config = (directory / "dnsmasq.conf").read_text(encoding="utf-8")
+    assert "dhcp-leasefile=/dev/null" in config
+    assert "dhcp-leasefile=\n" not in config
     assert config.count("dhcp-host=02:00:00:00:00:01,ignore") == 1
     assert "dhcp-host=02:00:00:00:00:02,192.168.77.2" in config
     assert NetworkServices.load(services.state_path).state["interface"] == "enp3s0"
