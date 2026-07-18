@@ -124,6 +124,12 @@ def build_parser() -> argparse.ArgumentParser:
     network_parser.add_argument("--directory", required=True, type=Path)
     network_parser.add_argument("--interface")
     network_parser.add_argument("--log", type=Path)
+    network_parser.add_argument(
+        "--ignore-client-mac",
+        action="append",
+        default=[],
+        help="MAC to exclude from DHCP (repeatable; useful for a bridged host adapter)",
+    )
 
     wait_parser = commands.add_parser("wait-for-rescue", help="wait until rescue SSH is reachable")
     add_connection_options(wait_parser, positional=False)
@@ -159,6 +165,12 @@ def build_parser() -> argparse.ArgumentParser:
     provision_parser.add_argument("--installed-target", metavar="admin@HOST")
     provision_parser.add_argument("--application-env-file", type=Path)
     provision_parser.add_argument("--wake-mac", help="optional target MAC for Wake-on-LAN")
+    provision_parser.add_argument(
+        "--ignore-client-mac",
+        action="append",
+        default=[],
+        help="MAC to exclude from DHCP (repeatable; useful for a bridged host adapter)",
+    )
     provision_parser.add_argument("--timeout", type=int, default=600)
     return parser
 
@@ -211,6 +223,7 @@ def execute(arguments: argparse.Namespace) -> None:
             bundle=arguments.bundle.expanduser().resolve(),
             directory=directory,
             log_path=(arguments.log or directory / "provisioning.log").expanduser().resolve(),
+            ignored_client_macs=tuple(arguments.ignore_client_mac),
         )
         print(network.state_path)
     elif arguments.command == "wait-for-rescue":
@@ -236,6 +249,7 @@ def execute(arguments: argparse.Namespace) -> None:
                     else None
                 ),
                 wake_mac=arguments.wake_mac,
+                ignored_client_macs=tuple(arguments.ignore_client_mac),
                 timeout=arguments.timeout,
             )
         )

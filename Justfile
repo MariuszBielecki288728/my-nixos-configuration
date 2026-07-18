@@ -12,7 +12,7 @@ lint:
   shellcheck scripts/*.sh tests/*.sh tests/e2e/*.sh tests/pxe/*.sh pxe/build-pxe.sh
 
 test-python:
-  uv run --project python pytest -c python/pyproject.toml
+  uv run --project python pytest -c python/pyproject.toml python/tests
 
 check:
   nix flake check --print-build-logs

@@ -22,8 +22,19 @@ CLIENT_ADDRESS = "192.168.77.2"
 PREFIX = "24"
 HTTP_PORT = 8081
 INTERFACE_PATTERN = re.compile(r"^[a-zA-Z0-9_.:-]{1,15}$")
+MAC_PATTERN = re.compile(r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 VIRTUAL_PREFIXES = ("br-", "docker", "veth", "virbr", "tap", "tun", "wg")
 MIN_SS_FIELDS = 4
+
+
+def validate_ignored_client_macs(macs: tuple[str, ...]) -> tuple[str, ...]:
+    """Validate and normalize runtime-only DHCP client exclusions."""
+    invalid = [mac for mac in macs if not MAC_PATTERN.fullmatch(mac)]
+    if invalid:
+        raise ProvisioningError(
+            "--ignore-client-mac must be a colon-separated MAC address: " + ", ".join(invalid)
+        )
+    return tuple(dict.fromkeys(mac.lower() for mac in macs))
 
 
 def choose_interface(
@@ -131,11 +142,18 @@ class NetworkServices:
 
     @classmethod
     def start(  # noqa: PLR0912, PLR0915
-        cls, *, interface: str, bundle: Path, directory: Path, log_path: Path
+        cls,
+        *,
+        interface: str,
+        bundle: Path,
+        directory: Path,
+        log_path: Path,
+        ignored_client_macs: tuple[str, ...] = (),
     ) -> NetworkServices:
         """Assign the isolated address and start dnsmasq plus the local HTTP server."""
         if os.geteuid() != 0:
             raise ProvisioningError("temporary DHCP/TFTP requires root; rerun with sudo")
+        ignored_client_macs = validate_ignored_client_macs(ignored_client_macs)
         validate_bundle(bundle)
         check_no_dhcp_listener()
         addresses = json.loads(
@@ -163,6 +181,7 @@ class NetworkServices:
                     f"interface={interface}",
                     "bind-interfaces",
                     "log-dhcp",
+                    *(f"dhcp-host={mac},ignore" for mac in ignored_client_macs),
                     f"dhcp-range={CLIENT_ADDRESS},{CLIENT_ADDRESS},255.255.255.0,1h",
                     f"dhcp-option=3,{SERVER_ADDRESS}",
                     f"dhcp-option=6,{SERVER_ADDRESS}",
@@ -237,6 +256,7 @@ class NetworkServices:
             "server_address": SERVER_ADDRESS,
             "client_address": CLIENT_ADDRESS,
             "http_port": HTTP_PORT,
+            "ignored_client_macs": list(ignored_client_macs),
             "address_added": address_added,
             "interface_was_up": was_up,
             "dnsmasq_pid": dnsmasq.pid,

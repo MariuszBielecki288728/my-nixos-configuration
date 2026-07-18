@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from mini_pc_provision.cli import main
+from mini_pc_provision.cli import build_parser, main
 from mini_pc_provision.errors import ProvisioningError
 from mini_pc_provision.keys import resolve_provisioning_keys
 
@@ -30,6 +30,20 @@ def test_help_documents_commands() -> None:
     assert "verify-installed" in completed.stdout
     assert "provision" in completed.stdout
     assert "start-provisioning-network" in completed.stdout
+
+
+def test_provision_accepts_repeatable_runtime_dhcp_exclusions() -> None:
+    """Bridged host adapters can be excluded without persisted machine defaults."""
+    arguments = build_parser().parse_args(
+        [
+            "provision",
+            "--ignore-client-mac",
+            "02:00:00:00:00:01",
+            "--ignore-client-mac",
+            "02:00:00:00:00:02",
+        ]
+    )
+    assert arguments.ignore_client_mac == ["02:00:00:00:00:01", "02:00:00:00:00:02"]
 
 
 def test_select_disk_command_prints_only_path(capsys) -> None:

@@ -180,6 +180,19 @@ sudo -E just -- provision-m710q \
   --interface REPLACE_WITH_DEDICATED_ETHERNET
 ```
 
+When a Linux PXE host runs in a bridged VM, the physical Windows adapter may also
+request the single DHCP lease. Exclude that adapter at runtime without persisting its
+machine-specific address in the repository:
+
+```bash
+sudo -E just -- provision-m710q \
+  --interface REPLACE_WITH_DEDICATED_ETHERNET \
+  --ignore-client-mac REPLACE_WITH_WINDOWS_ADAPTER_MAC
+```
+
+The option is repeatable. Each value must be a colon-separated MAC address and is
+written only to the private session's temporary dnsmasq configuration.
+
 The command builds a key-authorized PXE bundle from pinned inputs, optionally sends
 Wake-on-LAN with `--wake-mac`, waits for rescue SSH, displays disk identity, requires
 the full stable path, installs, and verifies SSH, Docker, the Compose unit, and HTTP.

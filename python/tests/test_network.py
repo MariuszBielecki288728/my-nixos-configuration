@@ -119,8 +119,12 @@ def test_temporary_services_record_and_cleanup_owned_state(tmp_path: Path, monke
         bundle=bundle,
         directory=directory,
         log_path=tmp_path / "services.log",
+        ignored_client_macs=("02:00:00:00:00:01", "02:00:00:00:00:01"),
     )
     assert services.state["address_added"] is True
+    assert services.state["ignored_client_macs"] == ["02:00:00:00:00:01"]
+    config = (directory / "dnsmasq.conf").read_text(encoding="utf-8")
+    assert config.count("dhcp-host=02:00:00:00:00:01,ignore") == 1
     assert NetworkServices.load(services.state_path).state["interface"] == "enp3s0"
     services.cleanup()
     assert services.state["cleaned"] is True
@@ -138,4 +142,17 @@ def test_temporary_services_require_root(tmp_path: Path, monkeypatch) -> None:
             bundle=tmp_path / "bundle",
             directory=tmp_path / "state",
             log_path=tmp_path / "services.log",
+        )
+
+
+def test_temporary_services_reject_invalid_ignored_mac(tmp_path: Path, monkeypatch) -> None:
+    """Unvalidated client identifiers never reach the generated dnsmasq config."""
+    monkeypatch.setattr("mini_pc_provision.network.os.geteuid", lambda: 0)
+    with pytest.raises(ProvisioningError, match="ignore-client-mac"):
+        NetworkServices.start(
+            interface="enp3s0",
+            bundle=tmp_path / "bundle",
+            directory=tmp_path / "state",
+            log_path=tmp_path / "services.log",
+            ignored_client_macs=("not-a-mac",),
         )
