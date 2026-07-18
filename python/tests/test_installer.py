@@ -10,7 +10,9 @@ from mini_pc_provision.disks import select_disk
 from mini_pc_provision.errors import ProvisioningError
 from mini_pc_provision.installer import (
     InstallOptions,
+    controlled_reboot_arguments,
     installed_target_candidates,
+    perform_controlled_reboot,
     read_public_key,
     validate_ci_disposable,
     validate_environment_file,
@@ -23,6 +25,31 @@ def test_reads_public_key(tmp_path: Path) -> None:
     key = tmp_path / "admin.pub"
     key.write_text("ssh-ed25519 QUJDRA== example\n", encoding="utf-8")
     assert read_public_key(key).endswith(" example")
+
+
+def test_controlled_reboot_defers_only_the_reboot_phase() -> None:
+    """The caller can switch transport modes before explicitly rebooting."""
+    assert controlled_reboot_arguments(None) == []
+    assert controlled_reboot_arguments(lambda: None) == [
+        "--phases",
+        "kexec,disko,install",
+    ]
+
+
+def test_controlled_reboot_resets_trust_after_command(monkeypatch) -> None:
+    """The reboot SSH call still trusts rescue; installed polling starts with fresh trust."""
+    events: list[str] = []
+    monkeypatch.setattr(
+        SshConnection,
+        "execute",
+        lambda _connection, *_command: events.append("reboot"),
+    )
+    perform_controlled_reboot(
+        SshConnection("root@rescue"),
+        lambda: events.append("dhcp-only"),
+        lambda: events.append("reset-trust"),
+    )
+    assert events == ["dhcp-only", "reboot", "reset-trust"]
 
 
 def test_rejects_private_or_empty_key(tmp_path: Path) -> None:

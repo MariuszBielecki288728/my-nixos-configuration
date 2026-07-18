@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import os
+import pwd
 import re
 import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -22,8 +25,27 @@ CLIENT_ADDRESS = "192.168.77.2"
 PREFIX = "24"
 HTTP_PORT = 8081
 INTERFACE_PATTERN = re.compile(r"^[a-zA-Z0-9_.:-]{1,15}$")
+MAC_PATTERN = re.compile(r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 VIRTUAL_PREFIXES = ("br-", "docker", "veth", "virbr", "tap", "tun", "wg")
 MIN_SS_FIELDS = 4
+LEASE_DIRECTORY_PREFIX = "mini-pc-provision-leases-"
+
+
+def validate_ignored_client_macs(macs: tuple[str, ...]) -> tuple[str, ...]:
+    """Validate and normalize runtime-only DHCP client exclusions."""
+    invalid = [mac for mac in macs if not MAC_PATTERN.fullmatch(mac)]
+    if invalid:
+        raise ProvisioningError(
+            "--ignore-client-mac must be a colon-separated MAC address: " + ", ".join(invalid)
+        )
+    return tuple(dict.fromkeys(mac.lower() for mac in macs))
+
+
+def validate_target_mac(mac: str | None) -> str | None:
+    """Validate and normalize an optional runtime DHCP reservation MAC."""
+    if mac is not None and not MAC_PATTERN.fullmatch(mac):
+        raise ProvisioningError("--target-mac must be a colon-separated MAC address")
+    return mac.lower() if mac else None
 
 
 def choose_interface(
@@ -121,6 +143,44 @@ def check_prerequisites(bundle: Path | None, key_files: tuple[Path, ...]) -> dic
     }
 
 
+def render_dnsmasq_config(
+    *,
+    interface: str,
+    lease_file: Path,
+    ignored_client_macs: tuple[str, ...],
+    target_mac: str | None,
+    pxe_bundle: Path | None,
+) -> str:
+    """Render either PXE delivery or post-install DHCP-only service configuration."""
+    lines = [
+        "port=0",
+        f"interface={interface}",
+        "bind-interfaces",
+        "user=nobody",
+        "log-dhcp",
+        "log-facility=-",
+        *([f"dhcp-host={target_mac},{CLIENT_ADDRESS}"] if target_mac else []),
+        *(f"dhcp-host={mac},ignore" for mac in ignored_client_macs),
+        f"dhcp-range={CLIENT_ADDRESS},{CLIENT_ADDRESS},255.255.255.0,1h",
+        f"dhcp-option=3,{SERVER_ADDRESS}",
+        f"dhcp-option=6,{SERVER_ADDRESS}",
+        f"dhcp-leasefile={lease_file}",
+    ]
+    if pxe_bundle is not None:
+        lines.extend(
+            [
+                "dhcp-match=set:efi64,option:client-arch,7",
+                "dhcp-match=set:efi64,option:client-arch,9",
+                f"dhcp-boot=tag:efi64,ipxe.efi,,{SERVER_ADDRESS}",
+                "dhcp-userclass=set:ipxe,iPXE",
+                f"dhcp-boot=tag:ipxe,http://{SERVER_ADDRESS}:{HTTP_PORT}/nixos/boot.ipxe",
+                "enable-tftp",
+                f"tftp-root={pxe_bundle / 'tftp'}",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
 @dataclass(slots=True)
 class NetworkServices:
     """Recorded temporary service state, also usable by a later cleanup command."""
@@ -131,11 +191,22 @@ class NetworkServices:
 
     @classmethod
     def start(  # noqa: PLR0912, PLR0915
-        cls, *, interface: str, bundle: Path, directory: Path, log_path: Path
+        cls,
+        *,
+        interface: str,
+        bundle: Path,
+        directory: Path,
+        log_path: Path,
+        ignored_client_macs: tuple[str, ...] = (),
+        target_mac: str | None = None,
     ) -> NetworkServices:
         """Assign the isolated address and start dnsmasq plus the local HTTP server."""
         if os.geteuid() != 0:
             raise ProvisioningError("temporary DHCP/TFTP requires root; rerun with sudo")
+        ignored_client_macs = validate_ignored_client_macs(ignored_client_macs)
+        target_mac = validate_target_mac(target_mac)
+        if target_mac in ignored_client_macs:
+            raise ProvisioningError("--target-mac cannot also be excluded with --ignore-client-mac")
         validate_bundle(bundle)
         check_no_dhcp_listener()
         addresses = json.loads(
@@ -155,30 +226,21 @@ class NetworkServices:
         was_up = bool(addresses and "UP" in addresses[0].get("flags", []))
         address_added = SERVER_ADDRESS not in global_ipv4
         directory.mkdir(parents=True, exist_ok=True)
+        lease_directory = Path(tempfile.mkdtemp(prefix=LEASE_DIRECTORY_PREFIX))
+        lease_directory.chmod(0o711)
+        lease_file = lease_directory / "dnsmasq.leases"
+        lease_file.touch(mode=0o600)
+        nobody = pwd.getpwnam("nobody")
+        os.chown(lease_file, nobody.pw_uid, nobody.pw_gid)
         config = directory / "dnsmasq.conf"
         config.write_text(
-            "\n".join(
-                [
-                    "port=0",
-                    f"interface={interface}",
-                    "bind-interfaces",
-                    "log-dhcp",
-                    f"dhcp-range={CLIENT_ADDRESS},{CLIENT_ADDRESS},255.255.255.0,1h",
-                    f"dhcp-option=3,{SERVER_ADDRESS}",
-                    f"dhcp-option=6,{SERVER_ADDRESS}",
-                    # Keep lease state in memory. The session is deliberately mode
-                    # 0700, while dnsmasq drops privileges after binding.
-                    "dhcp-leasefile=",
-                    "dhcp-match=set:efi64,option:client-arch,7",
-                    "dhcp-match=set:efi64,option:client-arch,9",
-                    f"dhcp-boot=tag:efi64,ipxe.efi,,{SERVER_ADDRESS}",
-                    "dhcp-userclass=set:ipxe,iPXE",
-                    f"dhcp-boot=tag:ipxe,http://{SERVER_ADDRESS}:{HTTP_PORT}/nixos/boot.ipxe",
-                    "enable-tftp",
-                    f"tftp-root={bundle / 'tftp'}",
-                ]
-            )
-            + "\n",
+            render_dnsmasq_config(
+                interface=interface,
+                lease_file=lease_file,
+                ignored_client_macs=ignored_client_macs,
+                target_mac=target_mac,
+                pxe_bundle=bundle,
+            ),
             encoding="utf-8",
         )
         if not was_up:
@@ -228,6 +290,8 @@ class NetworkServices:
                 )
             if not was_up:
                 run(["ip", "link", "set", "dev", interface, "down"], check=False)
+            lease_file.unlink(missing_ok=True)
+            lease_directory.rmdir()
             raise
         if dnsmasq is None or http is None:  # pragma: no cover - guarded above
             raise ProvisioningError("temporary service process creation failed")
@@ -237,12 +301,18 @@ class NetworkServices:
             "server_address": SERVER_ADDRESS,
             "client_address": CLIENT_ADDRESS,
             "http_port": HTTP_PORT,
+            "target_mac": target_mac,
+            "ignored_client_macs": list(ignored_client_macs),
+            "mode": "pxe",
             "address_added": address_added,
             "interface_was_up": was_up,
             "dnsmasq_pid": dnsmasq.pid,
             "http_pid": http.pid,
             "dnsmasq_marker": str(config),
             "http_marker": str(bundle / "http"),
+            "log_path": str(log_path),
+            "lease_file": str(lease_file),
+            "lease_directory": str(lease_directory),
         }
         state_path = directory / "network-state.json"
         state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
@@ -254,6 +324,55 @@ class NetworkServices:
             raise ProvisioningError("temporary DHCP/TFTP/HTTP service failed to start; inspect log")
         return instance
 
+    def enter_dhcp_only(self) -> None:
+        """Disable network boot while retaining DHCP for the installed-system reboot."""
+        if self.state.get("mode") == "dhcp-only":
+            return
+        if not self._processes:
+            raise ProvisioningError("PXE-to-DHCP transition requires live service processes")
+        dnsmasq_pid = int(self.state.get("dnsmasq_pid", 0))
+        dnsmasq = next((process for process in self._processes if process.pid == dnsmasq_pid), None)
+        if dnsmasq is None or dnsmasq.poll() is not None:
+            raise ProvisioningError("recorded PXE DHCP process is not running")
+        config = Path(str(self.state["dnsmasq_marker"]))
+        config.write_text(
+            render_dnsmasq_config(
+                interface=str(self.state["interface"]),
+                lease_file=Path(str(self.state["lease_file"])),
+                ignored_client_macs=tuple(self.state.get("ignored_client_macs", [])),
+                target_mac=self.state.get("target_mac"),
+                pxe_bundle=None,
+            ),
+            encoding="utf-8",
+        )
+        dnsmasq.terminate()
+        try:
+            dnsmasq.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            dnsmasq.kill()
+            dnsmasq.wait(timeout=1)
+        executable = shutil.which("dnsmasq")
+        if not executable:
+            raise ProvisioningError("required command is unavailable: dnsmasq")
+        with Path(str(self.state["log_path"])).open("a", encoding="utf-8") as log_stream:
+            replacement = subprocess.Popen(  # noqa: S603
+                [executable, "--keep-in-foreground", f"--conf-file={config}"],
+                stdout=log_stream,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+        self._processes = (
+            *(process for process in self._processes if process.pid != dnsmasq_pid),
+            replacement,
+        )
+        self.state["dnsmasq_pid"] = replacement.pid
+        self.state["mode"] = "dhcp-only"
+        self.state_path.write_text(json.dumps(self.state, indent=2) + "\n", encoding="utf-8")
+        time.sleep(1)
+        if replacement.poll() is not None:
+            self.cleanup()
+            raise ProvisioningError("DHCP-only service failed to start; inspect log")
+
     @classmethod
     def load(cls, state_path: Path) -> NetworkServices:
         """Load state produced by a standalone start stage."""
@@ -263,7 +382,7 @@ class NetworkServices:
             raise ProvisioningError(f"network state is unreadable: {state_path}") from error
         return cls(state_path, state)
 
-    def cleanup(self) -> None:
+    def cleanup(self) -> None:  # noqa: PLR0912
         """Stop only recorded matching processes and restore owned interface state."""
         stopped: list[tuple[int, str]] = []
         for role in ("http", "dnsmasq"):
@@ -304,5 +423,17 @@ class NetworkServices:
             )
         if not self.state.get("interface_was_up") and INTERFACE_PATTERN.fullmatch(interface):
             run(["ip", "link", "set", "dev", interface, "down"], check=False)
+        lease_file = Path(str(self.state.get("lease_file", "")))
+        lease_directory = Path(str(self.state.get("lease_directory", "")))
+        expected_parent = Path(tempfile.gettempdir()).resolve()
+        if (
+            lease_file.name == "dnsmasq.leases"
+            and lease_directory.name.startswith(LEASE_DIRECTORY_PREFIX)
+            and lease_directory.parent.resolve() == expected_parent
+            and lease_file.parent == lease_directory
+        ):
+            lease_file.unlink(missing_ok=True)
+            with suppress(OSError):
+                lease_directory.rmdir()
         self.state["cleaned"] = True
         self.state_path.write_text(json.dumps(self.state, indent=2) + "\n", encoding="utf-8")

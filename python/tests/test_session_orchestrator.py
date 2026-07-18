@@ -14,6 +14,7 @@ from mini_pc_provision.orchestrator import (
     build_keyed_pxe_bundle,
     candidate_json,
     collect_journal,
+    reset_known_hosts,
     send_wake_on_lan,
     wait_for_rescue,
 )
@@ -21,6 +22,15 @@ from mini_pc_provision.remote import SshConnection
 from mini_pc_provision.session import ProvisioningSession, atomic_json
 
 PRIVATE_MODE = 0o600
+
+
+def test_reset_known_hosts_is_private_and_removes_prior_identity(tmp_path: Path) -> None:
+    """Rescue and installed systems use separate TOFU boundaries at the fixed address."""
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("stale rescue identity\n", encoding="utf-8")
+    reset_known_hosts(known_hosts)
+    assert known_hosts.read_text(encoding="utf-8") == ""
+    assert known_hosts.stat().st_mode & 0o777 == PRIVATE_MODE
 
 
 def test_atomic_json_is_private_and_complete(tmp_path: Path) -> None:

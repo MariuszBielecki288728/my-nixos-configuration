@@ -7,7 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from mini_pc_provision.cli import main
+import pytest
+
+from mini_pc_provision.cli import build_parser, main
+from mini_pc_provision.errors import ProvisioningError
+from mini_pc_provision.keys import resolve_provisioning_keys
 
 ROOT = Path(__file__).resolve().parents[2]
 PRIVATE_MODE = 0o600
@@ -26,6 +30,23 @@ def test_help_documents_commands() -> None:
     assert "verify-installed" in completed.stdout
     assert "provision" in completed.stdout
     assert "start-provisioning-network" in completed.stdout
+
+
+def test_provision_accepts_repeatable_runtime_dhcp_exclusions() -> None:
+    """Bridged host adapters can be excluded without persisted machine defaults."""
+    arguments = build_parser().parse_args(
+        [
+            "provision",
+            "--ignore-client-mac",
+            "02:00:00:00:00:01",
+            "--ignore-client-mac",
+            "02:00:00:00:00:02",
+            "--target-mac",
+            "02:00:00:00:00:03",
+        ]
+    )
+    assert arguments.ignore_client_mac == ["02:00:00:00:00:01", "02:00:00:00:00:02"]
+    assert arguments.target_mac == "02:00:00:00:00:03"
 
 
 def test_select_disk_command_prints_only_path(capsys) -> None:
@@ -57,3 +78,9 @@ def test_invalid_report_is_concise(tmp_path: Path, capsys) -> None:
     report.write_text("not json", encoding="utf-8")
     assert main(["select-disk", str(report)]) == 1
     assert "not readable JSON" in capsys.readouterr().err
+
+
+def test_partial_explicit_provisioning_keys_fail_closed(tmp_path: Path) -> None:
+    """A partial explicit credential set never mixes unrelated default keys."""
+    with pytest.raises(ProvisioningError, match="supply --rescue-key-file"):
+        resolve_provisioning_keys(None, None, tmp_path / "identity")

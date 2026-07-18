@@ -9,6 +9,7 @@ import shutil
 import stat
 import tempfile
 import time
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,10 +79,30 @@ class InstallOptions:
     installed_target: str | None = None
     assume_yes: bool = False
     ci_disposable: bool = False
+    before_reboot: Callable[[], None] | None = None
+    after_reboot: Callable[[], None] | None = None
 
 
 CI_HOST = "e2e-target"
 CI_DISK = "/dev/disk/by-id/virtio-nixos-e2e"
+
+
+def controlled_reboot_arguments(before_reboot: Callable[[], None] | None) -> list[str]:
+    """Keep nixos-anywhere from rebooting before the transport is ready."""
+    return ["--phases", "kexec,disko,install"] if before_reboot else []
+
+
+def perform_controlled_reboot(
+    connection: SshConnection,
+    before_reboot: Callable[[], None] | None,
+    after_reboot: Callable[[], None] | None,
+) -> None:
+    """Run transport transitions on the correct sides of the reboot command."""
+    if before_reboot:
+        before_reboot()
+    connection.execute("systemctl", "--no-block", "reboot")
+    if after_reboot:
+        after_reboot()
 
 
 def validate_ci_disposable(
@@ -254,11 +275,17 @@ def install(options: InstallOptions) -> SshConnection:  # noqa: PLR0912, PLR0915
                     "0:0",
                 ]
             )
+        controlled_reboot = options.before_reboot or options.after_reboot
+        anywhere.extend(controlled_reboot_arguments(controlled_reboot))
         print(
             "Starting pinned nixos-anywhere; this is the first destructive operation",
             file=os.sys.stderr,
         )
         run(anywhere)
+        if controlled_reboot:
+            perform_controlled_reboot(
+                options.connection, options.before_reboot, options.after_reboot
+            )
 
     installed = wait_for_installed_target(installed_target_candidates(options, report), timeout=600)
     verify_installed(installed, timeout=600)

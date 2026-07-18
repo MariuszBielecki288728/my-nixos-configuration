@@ -11,6 +11,7 @@ from .discovery import candidate_summary, discover
 from .disks import select_disk
 from .errors import ProvisioningError
 from .installer import InstallOptions, install, verify_installed
+from .keys import resolve_provisioning_keys
 from .models import DiscoveryReport
 from .network import NetworkServices, check_prerequisites, detect_interface
 from .orchestrator import ProvisionOptions, provision, wait_for_rescue
@@ -123,6 +124,15 @@ def build_parser() -> argparse.ArgumentParser:
     network_parser.add_argument("--directory", required=True, type=Path)
     network_parser.add_argument("--interface")
     network_parser.add_argument("--log", type=Path)
+    network_parser.add_argument(
+        "--ignore-client-mac",
+        action="append",
+        default=[],
+        help="MAC to exclude from DHCP (repeatable; useful for a bridged host adapter)",
+    )
+    network_parser.add_argument(
+        "--target-mac", help="target MAC to reserve the fixed provisioning address for"
+    )
 
     wait_parser = commands.add_parser("wait-for-rescue", help="wait until rescue SSH is reachable")
     add_connection_options(wait_parser, positional=False)
@@ -139,17 +149,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     provision_parser.add_argument("--host", default="m710q", help="flake host configuration")
     provision_parser.add_argument(
-        "--rescue-key-file", type=Path, default=Path("~/.ssh/id_ed25519.pub")
+        "--rescue-key-file",
+        type=Path,
+        help="rescue public key (omit all key flags to create a dedicated pair)",
     )
     provision_parser.add_argument(
-        "--admin-key-file", type=Path, default=Path("~/.ssh/id_ed25519.pub")
+        "--admin-key-file",
+        type=Path,
+        help="installed admin public key (omit all key flags to create a dedicated pair)",
     )
-    provision_parser.add_argument("--identity", type=Path, default=Path("~/.ssh/id_ed25519"))
+    provision_parser.add_argument(
+        "--identity",
+        type=Path,
+        help="private SSH identity (omit all key flags to create a dedicated pair)",
+    )
     provision_parser.add_argument("--interface", help="reviewed dedicated Ethernet interface")
     provision_parser.add_argument("--disk", help="reviewed stable whole-disk path")
     provision_parser.add_argument("--installed-target", metavar="admin@HOST")
     provision_parser.add_argument("--application-env-file", type=Path)
     provision_parser.add_argument("--wake-mac", help="optional target MAC for Wake-on-LAN")
+    provision_parser.add_argument(
+        "--ignore-client-mac",
+        action="append",
+        default=[],
+        help="MAC to exclude from DHCP (repeatable; useful for a bridged host adapter)",
+    )
+    provision_parser.add_argument(
+        "--target-mac", help="target MAC to reserve the fixed provisioning address for"
+    )
     provision_parser.add_argument("--timeout", type=int, default=600)
     return parser
 
@@ -202,6 +229,8 @@ def execute(arguments: argparse.Namespace) -> None:
             bundle=arguments.bundle.expanduser().resolve(),
             directory=directory,
             log_path=(arguments.log or directory / "provisioning.log").expanduser().resolve(),
+            ignored_client_macs=tuple(arguments.ignore_client_mac),
+            target_mac=arguments.target_mac,
         )
         print(network.state_path)
     elif arguments.command == "wait-for-rescue":
@@ -209,12 +238,15 @@ def execute(arguments: argparse.Namespace) -> None:
     elif arguments.command == "cleanup":
         NetworkServices.load(arguments.state.expanduser().resolve()).cleanup()
     elif arguments.command == "provision":
+        keys = resolve_provisioning_keys(
+            arguments.rescue_key_file, arguments.admin_key_file, arguments.identity
+        )
         session = provision(
             ProvisionOptions(
                 host=arguments.host,
-                rescue_key_file=arguments.rescue_key_file.expanduser(),
-                admin_key_file=arguments.admin_key_file.expanduser(),
-                identity=arguments.identity.expanduser(),
+                rescue_key_file=keys.rescue_public,
+                admin_key_file=keys.admin_public,
+                identity=keys.identity,
                 interface=arguments.interface,
                 requested_disk=arguments.disk,
                 installed_target=arguments.installed_target,
@@ -224,6 +256,8 @@ def execute(arguments: argparse.Namespace) -> None:
                     else None
                 ),
                 wake_mac=arguments.wake_mac,
+                ignored_client_macs=tuple(arguments.ignore_client_mac),
+                target_mac=arguments.target_mac,
                 timeout=arguments.timeout,
             )
         )
