@@ -41,9 +41,12 @@ def test_provision_accepts_repeatable_runtime_dhcp_exclusions() -> None:
             "02:00:00:00:00:01",
             "--ignore-client-mac",
             "02:00:00:00:00:02",
+            "--target-mac",
+            "02:00:00:00:00:03",
         ]
     )
     assert arguments.ignore_client_mac == ["02:00:00:00:00:01", "02:00:00:00:00:02"]
+    assert arguments.target_mac == "02:00:00:00:00:03"
 
 
 def test_select_disk_command_prints_only_path(capsys) -> None:

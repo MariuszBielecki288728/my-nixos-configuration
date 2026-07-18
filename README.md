@@ -187,11 +187,14 @@ machine-specific address in the repository:
 ```bash
 sudo -E just -- provision-m710q \
   --interface REPLACE_WITH_DEDICATED_ETHERNET \
-  --ignore-client-mac REPLACE_WITH_WINDOWS_ADAPTER_MAC
+  --ignore-client-mac REPLACE_WITH_WINDOWS_ADAPTER_MAC \
+  --target-mac REPLACE_WITH_TARGET_MAC
 ```
 
-The option is repeatable. Each value must be a colon-separated MAC address and is
-written only to the private session's temporary dnsmasq configuration.
+The exclusion option is repeatable. `--target-mac` reserves `192.168.77.2` for the
+reviewed target and prevents another bridged client from consuming the only lease.
+Each value must be a colon-separated MAC address and is written only to the private
+session's temporary dnsmasq configuration.
 
 The command builds a key-authorized PXE bundle from pinned inputs, optionally sends
 Wake-on-LAN with `--wake-mac`, waits for rescue SSH, displays disk identity, requires

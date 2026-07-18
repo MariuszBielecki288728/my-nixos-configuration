@@ -130,6 +130,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="MAC to exclude from DHCP (repeatable; useful for a bridged host adapter)",
     )
+    network_parser.add_argument(
+        "--target-mac", help="target MAC to reserve the fixed provisioning address for"
+    )
 
     wait_parser = commands.add_parser("wait-for-rescue", help="wait until rescue SSH is reachable")
     add_connection_options(wait_parser, positional=False)
@@ -170,6 +173,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="MAC to exclude from DHCP (repeatable; useful for a bridged host adapter)",
+    )
+    provision_parser.add_argument(
+        "--target-mac", help="target MAC to reserve the fixed provisioning address for"
     )
     provision_parser.add_argument("--timeout", type=int, default=600)
     return parser
@@ -224,6 +230,7 @@ def execute(arguments: argparse.Namespace) -> None:
             directory=directory,
             log_path=(arguments.log or directory / "provisioning.log").expanduser().resolve(),
             ignored_client_macs=tuple(arguments.ignore_client_mac),
+            target_mac=arguments.target_mac,
         )
         print(network.state_path)
     elif arguments.command == "wait-for-rescue":
@@ -250,6 +257,7 @@ def execute(arguments: argparse.Namespace) -> None:
                 ),
                 wake_mac=arguments.wake_mac,
                 ignored_client_macs=tuple(arguments.ignore_client_mac),
+                target_mac=arguments.target_mac,
                 timeout=arguments.timeout,
             )
         )

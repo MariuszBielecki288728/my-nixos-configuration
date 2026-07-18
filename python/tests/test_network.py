@@ -120,11 +120,14 @@ def test_temporary_services_record_and_cleanup_owned_state(tmp_path: Path, monke
         directory=directory,
         log_path=tmp_path / "services.log",
         ignored_client_macs=("02:00:00:00:00:01", "02:00:00:00:00:01"),
+        target_mac="02:00:00:00:00:02",
     )
     assert services.state["address_added"] is True
     assert services.state["ignored_client_macs"] == ["02:00:00:00:00:01"]
+    assert services.state["target_mac"] == "02:00:00:00:00:02"
     config = (directory / "dnsmasq.conf").read_text(encoding="utf-8")
     assert config.count("dhcp-host=02:00:00:00:00:01,ignore") == 1
+    assert "dhcp-host=02:00:00:00:00:02,192.168.77.2" in config
     assert NetworkServices.load(services.state_path).state["interface"] == "enp3s0"
     services.cleanup()
     assert services.state["cleaned"] is True
@@ -155,4 +158,18 @@ def test_temporary_services_reject_invalid_ignored_mac(tmp_path: Path, monkeypat
             directory=tmp_path / "state",
             log_path=tmp_path / "services.log",
             ignored_client_macs=("not-a-mac",),
+        )
+
+
+def test_temporary_services_reject_conflicting_target_mac(tmp_path: Path, monkeypatch) -> None:
+    """The target cannot be silently excluded from its own DHCP reservation."""
+    monkeypatch.setattr("mini_pc_provision.network.os.geteuid", lambda: 0)
+    with pytest.raises(ProvisioningError, match="cannot also be excluded"):
+        NetworkServices.start(
+            interface="enp3s0",
+            bundle=tmp_path / "bundle",
+            directory=tmp_path / "state",
+            log_path=tmp_path / "services.log",
+            ignored_client_macs=("02:00:00:00:00:01",),
+            target_mac="02:00:00:00:00:01",
         )

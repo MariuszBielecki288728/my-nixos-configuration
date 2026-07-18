@@ -37,6 +37,13 @@ def validate_ignored_client_macs(macs: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(mac.lower() for mac in macs))
 
 
+def validate_target_mac(mac: str | None) -> str | None:
+    """Validate and normalize an optional runtime DHCP reservation MAC."""
+    if mac is not None and not MAC_PATTERN.fullmatch(mac):
+        raise ProvisioningError("--target-mac must be a colon-separated MAC address")
+    return mac.lower() if mac else None
+
+
 def choose_interface(
     links: list[dict[str, Any]],
     default_interfaces: set[str],
@@ -149,11 +156,15 @@ class NetworkServices:
         directory: Path,
         log_path: Path,
         ignored_client_macs: tuple[str, ...] = (),
+        target_mac: str | None = None,
     ) -> NetworkServices:
         """Assign the isolated address and start dnsmasq plus the local HTTP server."""
         if os.geteuid() != 0:
             raise ProvisioningError("temporary DHCP/TFTP requires root; rerun with sudo")
         ignored_client_macs = validate_ignored_client_macs(ignored_client_macs)
+        target_mac = validate_target_mac(target_mac)
+        if target_mac in ignored_client_macs:
+            raise ProvisioningError("--target-mac cannot also be excluded with --ignore-client-mac")
         validate_bundle(bundle)
         check_no_dhcp_listener()
         addresses = json.loads(
@@ -181,6 +192,7 @@ class NetworkServices:
                     f"interface={interface}",
                     "bind-interfaces",
                     "log-dhcp",
+                    *([f"dhcp-host={target_mac},{CLIENT_ADDRESS}"] if target_mac else []),
                     *(f"dhcp-host={mac},ignore" for mac in ignored_client_macs),
                     f"dhcp-range={CLIENT_ADDRESS},{CLIENT_ADDRESS},255.255.255.0,1h",
                     f"dhcp-option=3,{SERVER_ADDRESS}",
@@ -256,6 +268,7 @@ class NetworkServices:
             "server_address": SERVER_ADDRESS,
             "client_address": CLIENT_ADDRESS,
             "http_port": HTTP_PORT,
+            "target_mac": target_mac,
             "ignored_client_macs": list(ignored_client_macs),
             "address_added": address_added,
             "interface_was_up": was_up,

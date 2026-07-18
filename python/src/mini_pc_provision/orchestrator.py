@@ -40,6 +40,7 @@ class ProvisionOptions:
     application_env_file: Path | None = None
     wake_mac: str | None = None
     ignored_client_macs: tuple[str, ...] = ()
+    target_mac: str | None = None
     timeout: int = 600
 
 
@@ -165,6 +166,7 @@ def provision(options: ProvisionOptions) -> Path:  # pragma: no cover  # noqa: P
             directory=session.directory / "network",
             log_path=session.directory / "provisioning.log",
             ignored_client_macs=options.ignored_client_macs,
+            target_mac=options.target_mac,
         )
         session.write_json("network.json", network.state)
         if options.wake_mac:
