@@ -205,6 +205,7 @@ through to the installed disk while retaining the fixed address for verification
 Rescue and installed SSH identities use a private per-session trust file that is reset
 at this transition. All temporary network services and the owned address are stopped
 after success or failure.
+
 When all three key flags are omitted, it creates and reuses
 `~/.ssh/mini_pc_provision_ed25519` for the invoking user, including when run through
 `sudo`. To use existing credentials, pass `--identity`, `--rescue-key-file`, and
@@ -224,6 +225,43 @@ PXE host. `just pxe-test` still works in WSL by using a disposable TAP only.
 Home-LAN transport remains future work. Until a separate backend exists, use the
 low-level `discover` and `install` commands with a router-provided address; never start
 the direct-Ethernet DHCP backend on an existing LAN.
+
+### Windows and VirtualBox PXE host
+
+When Windows cannot expose its physical Ethernet adapter to WSL2, a Linux VirtualBox
+guest can own the PXE services. Use two guest adapters:
+
+1. NAT for management SSH and Nix downloads.
+2. Bridged to the reviewed physical Ethernet adapter for the isolated target cable.
+
+Inside the guest, identify both interfaces with `ip -brief link` and confirm the
+bridged interface has no default route. Interface names such as `enp0s8` are examples,
+not portable defaults. Pass the reviewed interface, Windows adapter MAC exclusion,
+and target reservation only at runtime. Do not add those machine-specific values to
+tracked configuration.
+
+The VM must remain running through installed-system verification. The orchestrator
+automatically disables PXE while retaining DHCP for the reboot. After verification it
+removes the temporary address and stops all services. If the entire VM is stopped
+manually, the Lenovo can still boot its local disk, but the direct cable has no DHCP
+server and remote SSH will not be available.
+
+### Direct-Ethernet troubleshooting
+
+The private session `provisioning.log` includes orchestrator, DHCP, TFTP, and HTTP
+evidence. These symptoms distinguish the common failure modes:
+
+| Visible symptom | Meaning | Safe response |
+| --- | --- | --- |
+| Ubuntu shows `systemd-networkd-wait-online` and eventually starts | Firmware fell through to the previously installed disk; Ubuntu was only waiting for its network policy. | Check the session log for a target `DHCPDISCOVER`; do not treat this as an installer hang. |
+| DHCP log identifies `MSFT 5.0` or the Windows hostname | The bridged Windows adapter is requesting the isolated lease. | Pass its reviewed MAC with `--ignore-client-mac` and reserve the target with `--target-mac`. |
+| Target PXE request reports `no address available` | The single lease is reserved or stale. | Confirm the target reservation and use the session-local lease implementation; never delete unrelated host DHCP state. |
+| `PXEClient:Arch:00007` appears | A 64-bit UEFI PXE request reached dnsmasq. | Continue with TFTP/iPXE diagnostics; firmware and cabling are working. |
+| NixOS rescue loads again after installation | PXE remained enabled during the reboot. | The high-level workflow now switches to DHCP-only before reboot; with low-level/manual tools, disable PXE delivery or use a one-time local-disk boot. |
+| SSH warns that remote identification changed at `192.168.77.2` | Rescue and installed systems legitimately presented different host keys at the reused fixed address. | Use the high-level session-private trust transition; do not broadly disable host-key checking or delete unrelated global entries. |
+
+Do not infer success from the display alone. Completion requires installed `admin` SSH
+plus active `sshd`, Docker, `mini-pc-application`, and the local HTTP health check.
 
 ## Physical installation
 

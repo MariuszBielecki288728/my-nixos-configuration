@@ -158,6 +158,7 @@ def render_dnsmasq_config(
         "bind-interfaces",
         "user=nobody",
         "log-dhcp",
+        "log-facility=-",
         *([f"dhcp-host={target_mac},{CLIENT_ADDRESS}"] if target_mac else []),
         *(f"dhcp-host={mac},ignore" for mac in ignored_client_macs),
         f"dhcp-range={CLIENT_ADDRESS},{CLIENT_ADDRESS},255.255.255.0,1h",

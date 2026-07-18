@@ -129,6 +129,7 @@ def test_temporary_services_record_and_cleanup_owned_state(tmp_path: Path, monke
     lease_file = Path(services.state["lease_file"])
     lease_directory = Path(services.state["lease_directory"])
     config = (directory / "dnsmasq.conf").read_text(encoding="utf-8")
+    assert "log-facility=-" in config
     assert f"dhcp-leasefile={lease_file}" in config
     assert config.count("dhcp-host=02:00:00:00:00:01,ignore") == 1
     assert "dhcp-host=02:00:00:00:00:02,192.168.77.2" in config
