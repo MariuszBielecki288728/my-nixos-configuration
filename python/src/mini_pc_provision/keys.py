@@ -26,26 +26,36 @@ class ProvisioningKeys:
     identity: Path
 
 
-def invoking_user_home() -> Path:
-    """Return the original user's home when provisioning is invoked through sudo."""
+def invoking_user_account() -> pwd.struct_passwd | None:
+    """Return the original local account when provisioning is invoked through sudo."""
     sudo_user = os.environ.get("SUDO_USER")
     if os.geteuid() == 0 and sudo_user and sudo_user != "root":
         if not USER_PATTERN.fullmatch(sudo_user):
             raise ProvisioningError("SUDO_USER is not a valid local account name")
         try:
-            return Path(pwd.getpwnam(sudo_user).pw_dir)
+            return pwd.getpwnam(sudo_user)
         except KeyError as error:
             raise ProvisioningError(
                 f"SUDO_USER does not identify a local account: {sudo_user}"
             ) from error
-    return Path.home()
+    return None
+
+
+def invoking_user_home() -> Path:
+    """Return the original user's home when provisioning is invoked through sudo."""
+    account = invoking_user_account()
+    return Path(account.pw_dir) if account else Path.home()
 
 
 def ensure_default_keypair(home: Path | None = None) -> ProvisioningKeys:
     """Create or reuse a dedicated Ed25519 key pair outside the project checkout."""
-    ssh_directory = (home or invoking_user_home()) / ".ssh"
+    account = invoking_user_account() if home is None else None
+    selected_home = Path(account.pw_dir) if account else (home or Path.home())
+    ssh_directory = selected_home / ".ssh"
     identity = ssh_directory / DEFAULT_KEY_NAME
     public_key = identity.with_suffix(".pub")
+    if ssh_directory.is_symlink() or identity.is_symlink() or public_key.is_symlink():
+        raise ProvisioningError("provisioning SSH key paths must not be symbolic links")
     ssh_directory.mkdir(mode=SSH_DIRECTORY_MODE, parents=True, exist_ok=True)
     ssh_directory.chmod(SSH_DIRECTORY_MODE)
 
@@ -72,6 +82,9 @@ def ensure_default_keypair(home: Path | None = None) -> ProvisioningKeys:
     if not identity.is_file() or not public_key.is_file():
         raise ProvisioningError("ssh-keygen did not create the expected provisioning key pair")
     identity.chmod(PRIVATE_MODE)
+    if account:
+        for path in (ssh_directory, identity, public_key):
+            os.chown(path, account.pw_uid, account.pw_gid)
     return ProvisioningKeys(public_key, public_key, identity)
 
 
