@@ -24,6 +24,8 @@ def test_help_documents_commands() -> None:
     assert "discover" in completed.stdout
     assert "select-disk" in completed.stdout
     assert "verify-installed" in completed.stdout
+    assert "provision" in completed.stdout
+    assert "start-provisioning-network" in completed.stdout
 
 
 def test_select_disk_command_prints_only_path(capsys) -> None:

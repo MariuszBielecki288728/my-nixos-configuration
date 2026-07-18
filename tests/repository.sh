@@ -9,7 +9,7 @@ fi
 
 root=$(git rev-parse --show-toplevel)
 cd "$root"
-for path in result result-pxe .e2e/target.raw artifacts/discovery/report.json pxe/http-root/nixos/initrd secrets/compose.env local.env; do
+for path in result result-pxe .e2e/target.raw artifacts/discovery/report.json artifacts/sessions/example/metadata.json pxe/http-root/nixos/initrd pxe/generated/tftp/ipxe.efi secrets/compose.env local.env; do
   git check-ignore -q "$path" || {
     echo "expected ignored path is not ignored: $path" >&2
     exit 1

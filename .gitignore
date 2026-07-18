@@ -13,6 +13,7 @@
 /.e2e/
 /artifacts/
 /pxe/http-root/nixos/
+/pxe/generated/
 
 # Runtime secrets. Keep examples with the explicit .example suffix tracked.
 /secrets/

@@ -4,12 +4,12 @@ fmt:
   nix fmt
   uv run --project python ruff check --fix python
   uv run --project python black python
-  shfmt -w -i 2 -ci scripts tests/*.sh tests/e2e pxe/build-pxe.sh
+  shfmt -w -i 2 -ci scripts tests/*.sh tests/e2e tests/pxe pxe/build-pxe.sh
 
 lint:
   uv run --project python ruff check python
   uv run --project python black --check python
-  shellcheck scripts/*.sh tests/*.sh tests/e2e/*.sh pxe/build-pxe.sh
+  shellcheck scripts/*.sh tests/*.sh tests/e2e/*.sh tests/pxe/*.sh pxe/build-pxe.sh
 
 test-python:
   uv run --project python pytest -c python/pyproject.toml
@@ -32,3 +32,9 @@ run-rescue-vm:
 
 e2e:
   tests/e2e/run.sh
+
+pxe-test:
+  tests/pxe/run.sh
+
+provision-m710q *args:
+  nix run .#provision -- --host m710q {{args}}

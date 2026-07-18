@@ -1,6 +1,8 @@
 services:
   web:
-    image: docker.io/library/nginx@sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284
+    # This platform image digest is loaded from the Nix closure before Compose.
+    image: docker.io/library/nginx@sha256:dc8e6d3967a06c0c9bb10d16cfc5770686de05da4c34d4224ef2aec61142e8f1
+    pull_policy: never
     # The installer may place a root-only dotenv file here. It is deliberately
     # outside the Nix store and is optional for services that need no secrets.
     env_file:

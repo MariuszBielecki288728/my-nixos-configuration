@@ -10,10 +10,11 @@ on:
       - modules/**
       - application/**
       - rescue/**
-      - provisioning/**
+      - pxe/**
       - python/**
       - scripts/**
       - tests/e2e/**
+      - tests/pxe/**
 
 permissions:
   contents: read

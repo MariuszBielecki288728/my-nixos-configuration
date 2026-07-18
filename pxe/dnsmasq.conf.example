@@ -1,12 +1,14 @@
-# Review for your isolated provisioning LAN. This file is never installed automatically.
+# Review for a dedicated, isolated Ethernet cable. The orchestrator generates its own
+# temporary equivalent and always stops it; this example is never installed automatically.
 port=0
 interface=REPLACE_WITH_PROVISIONING_INTERFACE
 bind-interfaces
-dhcp-range=REPLACE_WITH_START_IP,REPLACE_WITH_END_IP,12h
-dhcp-boot=undionly.kpxe
+dhcp-range=192.168.77.2,192.168.77.2,255.255.255.0,1h
+dhcp-option=3,192.168.77.1
 dhcp-match=set:efi64,option:client-arch,7
-dhcp-boot=tag:efi64,ipxe.efi
+dhcp-match=set:efi64,option:client-arch,9
+dhcp-boot=tag:efi64,ipxe.efi,,192.168.77.1
 enable-tftp
-tftp-root=REPLACE_WITH_TFTP_ROOT
+tftp-root=REPLACE_WITH_BUNDLE/tftp
 dhcp-userclass=set:ipxe,iPXE
-dhcp-boot=tag:ipxe,http://REPLACE_WITH_SERVER_IP/nixos/boot.ipxe
+dhcp-boot=tag:ipxe,http://192.168.77.1:8081/nixos/boot.ipxe
