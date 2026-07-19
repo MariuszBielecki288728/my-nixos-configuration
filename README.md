@@ -297,9 +297,10 @@ If multiple safe internal disks remain, discovery succeeds but installation stop
 Review the report and repeat with `--disk /dev/disk/by-id/REVIEWED_ID`. Never substitute
 `/dev/sda`.
 
-The production profiles intentionally leave the application disabled until a real
-LAN hostname and trusted CIDR are reviewed.
-Once enabled, Actual is available only at `https://HOSTNAME/` through Caddy's internal
+The generic production profile leaves the application disabled until a real LAN
+hostname and trusted CIDR are reviewed. The M710q profile uses the reviewed
+`think-centre.home` hostname and `192.168.1.0/24` LAN and enables both Actual and its
+Discord bot. Actual is available only at `https://think-centre.home/` through Caddy's internal
 CA; no application container port is exposed on the LAN. Application state belongs
 under `/var/lib/mini-pc`. See [application operations](docs/APPLICATION_OPERATIONS.md)
 for activation and CA trust, and [backup/restore](docs/BACKUP_AND_RESTORE.md) for data

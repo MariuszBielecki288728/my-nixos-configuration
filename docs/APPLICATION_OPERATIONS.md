@@ -34,11 +34,13 @@ nix run .#deploy -- \
 ```
 
 The command verifies SSH/sudo, architecture, disk space, and current health; builds
-and copies the closure; loads images; prints the change summary; backs up Actual;
-optionally stages a supplied secret file atomically; activates; and verifies. On
-failure it collects service and container diagnostics and restores both the previous
-generation and any changed secret file. Type the complete target when prompted.
-`--yes` is limited to disposable localhost CI.
+and copies the closure through the target's passwordless `sudo nix-store` boundary;
+loads images; prints the change summary; backs up Actual; optionally stages a supplied
+secret file atomically; activates; and verifies. The authenticated transfer permits
+the unsigned locally built closure only for that copy operation and does not weaken
+the target's global signature policy. On failure it collects service and container
+diagnostics and restores both the previous generation and any changed secret file.
+Type the complete target when prompted. `--yes` is limited to disposable localhost CI.
 
 Useful checks on the target are:
 
