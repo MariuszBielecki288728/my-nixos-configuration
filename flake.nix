@@ -219,17 +219,14 @@
         compose = pkgs.runCommand "compose-check" { nativeBuildInputs = [ pkgs.docker-compose ]; } ''
 
           mkdir -p "$TMPDIR/secrets"
-          touch "$TMPDIR/secrets/actual-ai.env" "$TMPDIR/secrets/discord-bot.env"
+          touch "$TMPDIR/secrets/discord-bot.env"
           sed \
-            -e "s|/var/lib/mini-pc/secrets/actual-ai.env|$TMPDIR/secrets/actual-ai.env|" \
             -e "s|/var/lib/mini-pc/secrets/discord-bot.env|$TMPDIR/secrets/discord-bot.env|" \
             ${./application/compose.yaml} > "$TMPDIR/compose.yaml"
           export ACTUAL_IMAGE=docker.io/example/actual:pinned-aaaaaaaaaaaa
-          export ACTUAL_AI_IMAGE=docker.io/example/ai:pinned-bbbbbbbbbbbb
-          export OLLAMA_IMAGE=docker.io/example/ollama:pinned-cccccccccccc
           export DISCORD_BOT_IMAGE=ghcr.io/example/bot:pinned-dddddddddddd
-          export ACTUAL_LOOPBACK_PORT=5006 OLLAMA_MODEL=test-model:1 OLLAMA_MEMORY_LIMIT=1g OLLAMA_CPU_LIMIT=1
-          docker-compose -f "$TMPDIR/compose.yaml" --profile ai --profile discord config --quiet
+          export ACTUAL_LOOPBACK_PORT=5006
+          docker-compose -f "$TMPDIR/compose.yaml" --profile discord config --quiet
           touch $out
         '';
         workflows = pkgs.runCommand "workflow-checks" { nativeBuildInputs = [ pkgs.actionlint ]; } ''

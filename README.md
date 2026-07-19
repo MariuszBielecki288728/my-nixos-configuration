@@ -118,11 +118,15 @@ roles and rotation scopes differ.
 ## Application secrets
 
 Plaintext secrets must not be referenced by Nix because Nix store objects are not
-secret. The installer validates an exact application contract, splits it per service,
-and copies root-only files directly to the installed filesystem:
+secret. When the optional Discord bot is enabled, the installer validates its exact
+application contract and copies a root-only file directly to the installed filesystem:
 
 ```bash
-scripts/create-secrets-file.sh --name ACTUAL_PASSWORD --name ACTUAL_BUDGET_ID
+scripts/create-secrets-file.sh \
+  --name DISCORD_TOKEN \
+  --name DISCORD_BANK_NOTIFICATION_CHANNEL \
+  --name ACTUAL_PASSWORD \
+  --name ACTUAL_FILE
 nix run .#install -- ... --application-env-file secrets/compose.env
 ```
 
@@ -294,7 +298,7 @@ Review the report and repeat with `--disk /dev/disk/by-id/REVIEWED_ID`. Never su
 `/dev/sda`.
 
 The production profiles intentionally leave the application disabled until a real
-LAN hostname, trusted CIDR, and (for AI) a hardware-tested Ollama model are reviewed.
+LAN hostname and trusted CIDR are reviewed.
 Once enabled, Actual is available only at `https://HOSTNAME/` through Caddy's internal
 CA; no application container port is exposed on the LAN. Application state belongs
 under `/var/lib/mini-pc`. See [application operations](docs/APPLICATION_OPERATIONS.md)
@@ -307,8 +311,7 @@ Later upgrades use the transactional deployment command rather than reinstalling
 nix run .#deploy -- \
   --target admin@HOST \
   --host m710q \
-  --identity ~/.ssh/id_ed25519 \
-  --application-env-file secrets/compose.env
+  --identity ~/.ssh/id_ed25519
 ```
 
 ## PXE/iPXE

@@ -26,11 +26,11 @@ class RecordingConnection:
     """Small process-boundary double that never interprets remote shell text."""
 
     def __init__(self) -> None:
-        """Initialize command and copy observations with one existing AI file."""
+        """Initialize command and copy observations with one existing bot file."""
         self.target = "admin@127.0.0.1"
         self.commands: list[tuple[str, ...]] = []
         self.copies: list[tuple[Path, str]] = []
-        self.existing = {"/var/lib/mini-pc/secrets/actual-ai.env"}
+        self.existing = {"/var/lib/mini-pc/secrets/discord-bot.env"}
 
     def execute(self, *command: str, input_text: str | None = None) -> str:
         """Return deterministic boundaries for mktemp and existence probes."""
@@ -54,9 +54,15 @@ class RecordingConnection:
 
 
 def secret_file(tmp_path: Path) -> Path:
-    """Create a complete AI bootstrap contract."""
+    """Create a complete Discord bot bootstrap contract."""
     path = tmp_path / "compose.env"
-    path.write_text("ACTUAL_PASSWORD=secret\nACTUAL_BUDGET_ID=budget\n", encoding="utf-8")
+    path.write_text(
+        "ACTUAL_PASSWORD=secret\n"
+        "ACTUAL_FILE=Budget\n"
+        "DISCORD_TOKEN=token\n"
+        "DISCORD_BANK_NOTIFICATION_CHANNEL=bank\n",
+        encoding="utf-8",
+    )
     path.chmod(0o600)
     return path
 
@@ -74,17 +80,34 @@ def test_deploy_requires_explicit_admin_target_and_matching_ci_flags(tmp_path: P
         )
 
 
+def test_full_deployment_does_not_require_optional_service_secrets(tmp_path: Path) -> None:
+    """A base Actual deployment remains valid when the optional bot is disabled."""
+    admin_key = tmp_path / "admin.pub"
+    admin_key.write_text("ssh-ed25519 QUJDRA== test\n", encoding="utf-8")
+    assert (
+        validate_deploy_options(
+            DeployOptions(
+                SshConnection("admin@example"),
+                None,
+                host="m710q",
+                admin_key_file=admin_key,
+            )
+        )
+        is None
+    )
+
+
 def test_stage_and_rollback_never_put_values_in_remote_arguments(tmp_path: Path) -> None:
     """Secrets cross only the SCP file channel and replacements remain recoverable."""
     connection = RecordingConnection()
     bundle = SecretBundle(
         values={"ACTUAL_PASSWORD": "very-secret"},
-        files={"actual-ai.env": "ACTUAL_PASSWORD=very-secret\n"},
+        files={"discord-bot.env": "ACTUAL_PASSWORD=very-secret\n"},
     )
     state = stage_remote_secrets(connection, bundle, tmp_path)
-    assert state.previous_files == frozenset({"actual-ai.env"})
+    assert state.previous_files == frozenset({"discord-bot.env"})
     assert connection.copies[0][1] == (
-        "/tmp/mini-pc-deploy.ABC123/actual-ai.env"  # noqa: S108 - validated fixture.
+        "/tmp/mini-pc-deploy.ABC123/discord-bot.env"  # noqa: S108 - validated fixture.
     )
     assert all(
         "very-secret" not in argument for command in connection.commands for argument in command
@@ -158,8 +181,8 @@ def test_failed_full_activation_restores_generation_and_secrets(
     admin_key.write_text("ssh-ed25519 QUJDRA== test\n", encoding="utf-8")
     state = RemoteSecretState(
         "/var/lib/mini-pc/secrets/previous",
-        frozenset({"actual-ai.env"}),
-        frozenset({"actual-ai.env"}),
+        frozenset({"discord-bot.env"}),
+        frozenset({"discord-bot.env"}),
     )
     health_calls = 0
 
@@ -193,6 +216,6 @@ def test_failed_full_activation_restores_generation_and_secrets(
         "sudo",
         "cp",
         "--preserve=mode,ownership",
-        "/var/lib/mini-pc/secrets/previous/actual-ai.env",
-        "/var/lib/mini-pc/secrets/actual-ai.env",
+        "/var/lib/mini-pc/secrets/previous/discord-bot.env",
+        "/var/lib/mini-pc/secrets/discord-bot.env",
     ) in connection.commands

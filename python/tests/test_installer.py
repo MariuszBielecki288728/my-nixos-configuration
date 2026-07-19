@@ -64,7 +64,12 @@ def test_environment_file_requires_private_valid_dotenv(tmp_path: Path) -> None:
     """Only a private, regular dotenv file passes secret staging validation."""
     environment = tmp_path / "compose.env"
     environment.write_text(
-        "# comment\nACTUAL_PASSWORD=value\nACTUAL_BUDGET_ID=budget\n", encoding="utf-8"
+        "# comment\n"
+        "ACTUAL_PASSWORD=value\n"
+        "ACTUAL_FILE=Budget\n"
+        "DISCORD_TOKEN=token\n"
+        "DISCORD_BANK_NOTIFICATION_CHANNEL=bank\n",
+        encoding="utf-8",
     )
     environment.chmod(0o600)
     validate_environment_file(environment)

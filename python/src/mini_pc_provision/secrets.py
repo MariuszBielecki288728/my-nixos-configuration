@@ -12,14 +12,6 @@ from .errors import ProvisioningError
 ENVIRONMENT_LINE = re.compile(r"^(?:#.*|\s*|[A-Za-z_][A-Za-z0-9_]*=.*)$")
 NAME_VALUE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 
-ACTUAL_AI_KEYS = frozenset(
-    {
-        "ACTUAL_PASSWORD",
-        "ACTUAL_BUDGET_ID",
-        "ACTUAL_E2E_PASSWORD",
-    }
-)
-ACTUAL_AI_REQUIRED = frozenset({"ACTUAL_PASSWORD", "ACTUAL_BUDGET_ID"})
 DISCORD_BOT_KEYS = frozenset(
     {
         "DISCORD_TOKEN",
@@ -39,7 +31,7 @@ DISCORD_BOT_REQUIRED = frozenset(
         "ACTUAL_FILE",
     }
 )
-KNOWN_KEYS = ACTUAL_AI_KEYS | DISCORD_BOT_KEYS
+KNOWN_KEYS = DISCORD_BOT_KEYS
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,12 +80,6 @@ def load_secret_bundle(path: Path) -> SecretBundle:
 
     files: dict[str, str] = {}
     for filename, allowed, required, triggers in (
-        (
-            "actual-ai.env",
-            ACTUAL_AI_KEYS,
-            ACTUAL_AI_REQUIRED,
-            ACTUAL_AI_KEYS - {"ACTUAL_PASSWORD"},
-        ),
         (
             "discord-bot.env",
             DISCORD_BOT_KEYS,

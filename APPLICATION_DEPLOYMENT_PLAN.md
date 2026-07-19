@@ -9,8 +9,6 @@ The goal is to replace the demonstration nginx Compose stack with a reproducible
 LAN-only application platform containing:
 
 - Actual Budget;
-- actual-ai, using Ollama as its local LLM provider;
-- Ollama and one explicitly selected local model;
 - `MariuszBielecki288728/actual-discord-bot`;
 - a safe deployment utility that can update the Compose stack, runtime secrets, and
   the complete NixOS configuration on both fresh and existing installations.
@@ -42,8 +40,6 @@ rescue image or PXE boot may start an installation automatically.
 - Creating real credentials, Actual budget IDs, Discord tokens, or encryption keys.
 - Choosing a LAN CIDR, hostname, or fixed address without inspecting the real LAN.
 - Enabling router port forwarding, UPnP, cloud tunnels, or public DNS.
-- Automatically selecting an Ollama model before checking the Lenovo's installed
-  memory, free storage, and real inference performance.
 - Moving installation logic into the rescue system.
 
 ## 3. Sources and planning snapshot
@@ -54,10 +50,7 @@ this plan was written (2026-07-19), the upstream release snapshot was:
 | Component | Planning baseline | Production pinning rule |
 | --- | --- | --- |
 | Actual Budget | `v26.7.0` | Select the then-current stable release, review its notes, and pin its linux/amd64 image by registry digest and Nix fixed-output hash. |
-| actual-ai | `2.4.2` | Select a release compatible with the chosen Actual version and pin its image by digest and Nix hash. |
-| Ollama | `v0.32.1` | Select a tested release and pin its image by digest and Nix hash. |
 | actual-discord-bot | `main` at `8d987b24371e87de698581916d46ac2d45ad42d4` | Use a released image digest or an exact source commit; never build production from a floating branch. |
-| Ollama model | Not selected | Select after hardware validation and pin an explicit model identifier; record its size and checksum/digest where supported. |
 
 Relevant sources:
 
@@ -65,14 +58,10 @@ Relevant sources:
 - [Actual Budget repository and releases](https://github.com/actualbudget/actual)
 - [Actual HTTPS documentation](https://actualbudget.org/docs/config/https/)
 - [Actual reverse-proxy documentation](https://actualbudget.org/docs/config/reverse-proxies/)
-- [actual-ai repository and configuration](https://github.com/sakowicz/actual-ai)
-- [Ollama repository](https://github.com/ollama/ollama)
-- [Ollama model-pull API](https://docs.ollama.com/api/pull)
 - [actual-discord-bot repository](https://github.com/MariuszBielecki288728/actual-discord-bot)
 
-The old Compose file is useful as a functional inventory, but its mutable `latest`
-tags, host-published Ollama port, and `pull_policy: always` must not be carried into
-this repository.
+The old Compose file is useful as a functional inventory, but mutable `latest` tags
+and `pull_policy: always` must not be carried into this repository.
 
 ## 4. Target architecture
 
@@ -85,21 +74,14 @@ native NixOS Caddy
     |
     | 127.0.0.1:5006 only
     v
-Actual server ---- private Compose network ---- actual-ai
-                                              |       |
-                                              |       +---- Ollama :11434
-                                              |
-                                              +---- Actual internal URL
-
-Discord API <---- outbound TLS ---- actual-discord-bot
-                                  |
-                                  +---- Actual internal URL
+Actual server ---- private Compose network ---- actual-discord-bot
+                                                   |
+Discord API <---------- outbound TLS ---------------+
 ```
 
 Only Caddy is reachable from the LAN. Actual binds a published port to loopback so
-the host-native reverse proxy can reach it. actual-ai, Ollama, the Ollama model-init
-job, and the Discord bot have no host-published ports. SSH remains governed by the
-existing NixOS administration policy.
+the host-native reverse proxy can reach it. The Discord bot has no host-published
+port. SSH remains governed by the existing NixOS administration policy.
 
 Use native NixOS Caddy rather than another Compose container because it avoids a
 Docker-socket dependency, integrates cleanly with the host firewall, and can start
@@ -127,7 +109,6 @@ my.actualStack = {
   trustedLanCidrs = [ "REPLACE_WITH_LAN_CIDR" ];
   dataRoot = "/var/lib/mini-pc";
   actualLoopbackPort = 5006;
-  ollamaModel = "REPLACE_WITH_TESTED_MODEL";
 };
 ```
 
@@ -142,19 +123,14 @@ listener.
 
 ### 5.2 Runtime secret contract
 
-The minimum secret inventory is expected to include:
+The minimum secret inventory for the optional bot is expected to include:
 
-- `ACTUAL_PASSWORD`;
-- `ACTUAL_BUDGET_ID` or the exact upstream variable required by the selected
-  actual-ai release;
-- `ACTUAL_E2E_PASSWORD` when the budget uses end-to-end encryption;
 - `DISCORD_TOKEN`;
 - Discord bank and receipt channel IDs;
 - the Discord bot's Actual password, budget/file identifier, encryption password,
   account identifier, and OCR settings where required.
 
 During implementation, normalize names only where a wrapper maps them explicitly.
-Do not assume that actual-ai and the Discord bot use identical variable names.
 
 Secrets must never be placed in Git, Nix expressions, derivations, image layers,
 process command lines, or CI logs. Root and a container receiving a secret can still
@@ -222,47 +198,13 @@ Do not generate secrets into the Nix store while rendering Compose.
   `/var/lib/mini-pc/actual/data`.
 - Publish `5006` only on `127.0.0.1`; do not bind it to all interfaces.
 - Add the upstream-supported health check.
-- Join only the application network needed by actual-ai and the bot.
+- Join only the application network needed by the bot.
 - Run with `no-new-privileges`, dropped capabilities, and a read-only root filesystem
   where the tested image permits it.
 - Configure Caddy's reverse-proxy headers according to Actual's current documentation
   and verify that COOP/COEP headers are present exactly once.
 
-### 6.3 actual-ai
-
-- Use a release tested against the selected Actual version and pin its image.
-- Use the selected release's current Ollama interface, expected to include
-  `LLM_PROVIDER=ollama`, an explicit `OLLAMA_MODEL`, and an internal URL such as
-  `http://ollama:11434/api`; verify exact variable names upstream.
-- Connect to Actual using its internal Compose service URL, never the LAN URL.
-- Do not publish an actual-ai port.
-- Start with non-destructive behavior: enable its dry-run feature for acceptance
-  testing, inspect proposed classifications, and only then deliberately enable writes.
-- Make optional features such as account sync, category suggestions, and web search
-  explicit. Do not enable outbound web-search features by accident.
-- Define a health check and bounded restart policy.
-
-### 6.4 Ollama
-
-- Pin the Ollama server image and keep port `11434` internal to Compose.
-- Persist model data under `/var/lib/mini-pc/ollama`.
-- Add a health check that verifies the local API without downloading anything.
-- Add a one-shot `ollama-model-init` service that waits for health and invokes the
-  official model-pull API for the configured model.
-- Make model download an explicit deployment phase with progress, timeout, disk-space
-  preflight, and an actionable error. A transient model download failure must not
-  roll back a working Actual server.
-- Do not back up the model cache by default; it is reproducible and can be downloaded
-  again.
-
-Before selecting a model, record `free -h`, CPU details, free space, and a representative
-classification benchmark on the physical M710q. The Pentium G4400T is CPU-only for
-this design, so start evaluation with a small quantized model recommended by the
-selected actual-ai release. Accept the model only after measuring latency and peak
-memory without forcing the host into swap or OOM. Keep the model configurable so an
-upgrade does not require restructuring the stack.
-
-### 6.5 actual-discord-bot
+### 6.3 actual-discord-bot
 
 - Use the production target from the bot repository and an exact source revision.
 - Prefer adding a bot-repository release workflow that publishes a linux/amd64 image
@@ -281,7 +223,7 @@ upgrade does not require restructuring the stack.
 - Verify reconnect behavior, Discord rate-limit handling, duplicate-message behavior,
   bank notification processing, receipt image OCR, and receipt PDF processing.
 
-### 6.6 Container hardening and resource policy
+### 6.4 Container hardening and resource policy
 
 For each service, determine and document:
 
@@ -296,8 +238,7 @@ For each service, determine and document:
 - log size/rotation limits.
 
 Do not apply a hardening flag blindly if it breaks the upstream image. Record each
-exception. Ollama requires a writable model directory and will likely need the largest
-resource allowance. Prevent its resource use from making SSH or Actual unavailable.
+exception and prevent optional services from making SSH or Actual unavailable.
 
 ## 7. LAN-only networking and HTTPS
 
@@ -325,7 +266,6 @@ Create host directories declaratively with explicit owner, group, and mode:
 
 ```text
 /var/lib/mini-pc/actual/data       critical persistent data
-/var/lib/mini-pc/ollama            reproducible model cache
 /var/lib/mini-pc/caddy             Caddy state/CA material, if not using defaults
 /var/lib/mini-pc/secrets           runtime secrets, root-only
 /var/lib/mini-pc/backups/actual    local staged backups
@@ -349,8 +289,7 @@ nix run .#deploy -- \
   --target admin@HOST \
   --host m710q \
   --identity ~/.ssh/id_ed25519 \
-  --admin-key-file ~/.ssh/id_ed25519.pub \
-  --application-env-file PATH
+  --admin-key-file ~/.ssh/id_ed25519.pub
 
 nix run .#deploy -- \
   --target admin@HOST \
@@ -365,17 +304,17 @@ nix run .#deploy -- \
 2. Verify SSH host identity and connectivity with an explicit timeout.
 3. Collect a read-only remote preflight: NixOS generation, disk space, memory, Docker
    state, application health, and currently loaded image IDs.
-4. Validate the dotenv/sops inputs without printing values.
+4. Validate supplied dotenv/sops inputs without printing values.
 5. Build the target system locally using the pinned flake.
 6. Build/load all required image archives before stopping the old application.
 7. Create a timestamped pre-upgrade Actual backup and verify it is non-empty.
-8. Stage secrets in a mode-0700 temporary directory, then atomically install them as
-   root-owned mode `0600` files outside the Nix store.
+8. If supplied, stage secrets in a mode-0700 temporary directory, then atomically
+   install them as root-owned mode `0600` files outside the Nix store.
 9. Inject the selected admin public key through a temporary, untracked Nix module so
    a full rebuild cannot remove the operator's only SSH access.
 10. Copy and activate the new NixOS generation with a command-vector-based process;
     never construct a shell command from user input.
-11. Wait for systemd, Compose, Actual health, HTTPS, actual-ai, and bot readiness.
+11. Wait for systemd, Compose, Actual health, HTTPS, and bot readiness.
 12. Run a read-only application smoke test.
 13. Mark the deployment successful and prune nothing automatically.
 14. On failure, collect diagnostics, roll back to the prior NixOS generation and prior
@@ -448,8 +387,7 @@ stop/quiesce Actual or use a proven snapshot method so database files are consis
 Do not run `docker compose down -v` in operational instructions.
 
 Back up secrets only in an encrypted password manager or encrypted recovery bundle.
-Do not include the Ollama model cache in routine backups unless bandwidth constraints
-justify it. Preserve Caddy CA recovery material if clients depend on that CA.
+Preserve Caddy CA recovery material if clients depend on that CA.
 
 ## 12. Testing strategy
 
@@ -473,14 +411,11 @@ Use disposable VM disks and fixture secrets. Verify:
 - all images are preloaded and the stack starts with registry access unavailable;
 - Actual is healthy through HTTPS;
 - Actual is not reachable directly from the VM's LAN interface on port `5006`;
-- Ollama and actual-ai have no host listener;
 - only trusted test-LAN sources can reach HTTPS;
 - persistent data survives a service and VM restart;
 - secrets are absent from the Nix store and world-readable paths;
-- dry-run actual-ai can reach both Actual and Ollama;
-- the model-init job is idempotent;
 - the bot can start with a fake Discord boundary or purpose-built integration fixture;
-- resource pressure from Ollama does not make SSH and Actual unhealthy.
+- resource pressure from optional services does not make SSH and Actual unhealthy.
 
 Avoid contacting real Discord or production Actual data from CI.
 
@@ -509,8 +444,8 @@ Implementation must update or add:
 - `application/README.md`: services, internal topology, versions, storage, and health;
 - `docs/SECRETS.md`: concrete threat model, dotenv bootstrap, `sops-nix`, rotation,
   and recovery;
-- `docs/APPLICATION_OPERATIONS.md`: status, logs, restart, upgrade, model management,
-  and incident checks;
+- `docs/APPLICATION_OPERATIONS.md`: status, logs, restart, upgrade, and incident
+  checks;
 - `docs/BACKUP_AND_RESTORE.md`: exact backup, restore, and restore-test procedures;
 - repository layout documentation for every new module and command.
 
@@ -526,7 +461,6 @@ tokens or passwords.
 - Decide Caddy internal CA versus an existing private PKI.
 - Decide dotenv bootstrap versus immediate `sops-nix` adoption.
 - Decide whether the Discord bot image will be published to GHCR or built by Nix.
-- Benchmark candidate small Ollama models and choose one explicitly.
 
 Exit criteria: all placeholders required to enable production have reviewed values;
 no credentials are added to Git.
@@ -549,16 +483,7 @@ startup requires no registry access.
 Exit criteria: a broken disposable deployment automatically restores the previous
 healthy generation and secret set.
 
-### Milestone 3: Ollama and actual-ai
-
-- Add Ollama, model initialization, and resource policy.
-- Add actual-ai in dry-run mode.
-- Validate classifications before permitting writes.
-
-Exit criteria: measured physical-host performance is acceptable and Actual remains
-responsive under inference load.
-
-### Milestone 4: Discord bot
+### Milestone 3: Discord bot
 
 - Establish immutable bot artifact provenance.
 - Add runtime configuration, health reporting, and integration tests.
@@ -567,7 +492,7 @@ responsive under inference load.
 Exit criteria: the bot survives restart/reconnect, reaches Actual internally, exposes
 no LAN port, and leaks no credentials.
 
-### Milestone 5: production handoff
+### Milestone 4: production handoff
 
 - Run restore drill.
 - Deploy with a pre-upgrade backup.
@@ -587,9 +512,7 @@ Stop deployment and preserve the current working system if:
 - an image or source dependency is mutable or cannot be verified;
 - a secret would enter Git, a command argument, a log, or the Nix store;
 - health checks fail or rollback cannot identify a known-good generation;
-- the selected Ollama model exceeds available storage or causes sustained OOM/swap;
-- enabling the firewall rules would expose Actual, Ollama, actual-ai, or the bot beyond
-  the intended LAN;
+- enabling the firewall rules would expose Actual or the bot beyond the intended LAN;
 - a full deployment would remove the only working admin SSH key;
 - unrelated local changes would be overwritten.
 

@@ -16,7 +16,6 @@ let
     mkIf
     mkOption
     optional
-    optionals
     types
     ;
 
@@ -58,20 +57,6 @@ let
       nixHash = "sha256-uixGAnKKoSggH8JpBQDTu8MRjGQUm4bLHkMTwaW8+0E=";
       version = "26.7.0-alpine";
     };
-    actualAi = {
-      imageName = "docker.io/sakowicz/actual-ai";
-      sourceDigest = "sha256:b5743c3f9c7193c1d22cce74a252c65fef1320feed47413c5eaefebb5199f717";
-      contentDigest = "sha256:e80152d7668b8b7f5bd036331990fb799872b9079ed8d1250c617ad52313b8bb";
-      nixHash = "sha256-OrEIMtyNmWHsz11iHv+NrtK8afqgT5xp1REsCNRVPTk=";
-      version = "2.4.2";
-    };
-    ollama = {
-      imageName = "docker.io/ollama/ollama";
-      sourceDigest = "sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0";
-      contentDigest = "sha256:1d9f0b83b852efef42435e65fd53d0dc4f462a60dabf5c719058c99d47f32e36";
-      nixHash = "sha256-BeyPlto5n4505B/9i/u/B5OBS5sn8ZHl4O7svgpeDqI=";
-      version = "0.32.1";
-    };
     discordBot = {
       imageName = "ghcr.io/mariuszbielecki288728/actual-discord-bot";
       sourceDigest = "sha256:349b8d9ed77d1be0d28365562ce1b9f4469a4f5edf578924276b57a5b89d4bfb";
@@ -84,10 +69,6 @@ let
 
   activeImageNames = [
     "actual"
-  ]
-  ++ optionals cfg.actualAi.enable [
-    "actualAi"
-    "ollama"
   ]
   ++ optional cfg.discordBot.enable "discordBot";
   activeImages = filterAttrs (name: _image: builtins.elem name activeImageNames) cfg.images;
@@ -123,13 +104,8 @@ let
   composeCommand = "${pkgs.docker-compose}/bin/docker-compose -f ${composeFile}";
   composeEnvironment = {
     ACTUAL_IMAGE = imageReference cfg.images.actual;
-    ACTUAL_AI_IMAGE = imageReference cfg.images.actualAi;
-    OLLAMA_IMAGE = imageReference cfg.images.ollama;
     DISCORD_BOT_IMAGE = imageReference cfg.images.discordBot;
     ACTUAL_LOOPBACK_PORT = toString cfg.actualLoopbackPort;
-    OLLAMA_MODEL = cfg.ollamaModel;
-    OLLAMA_MEMORY_LIMIT = cfg.ollamaMemoryLimit;
-    OLLAMA_CPU_LIMIT = toString cfg.ollamaCpuLimit;
   };
   composeEnvironmentExports = concatStringsSep "\n" (
     lib.mapAttrsToList (name: value: "export ${name}=${lib.escapeShellArg value}") composeEnvironment
@@ -175,11 +151,6 @@ let
         https://${cfg.hostname}/
       test "$(grep -ic '^cross-origin-opener-policy:' "$headers")" -eq 1
       test "$(grep -ic '^cross-origin-embedder-policy:' "$headers")" -eq 1
-      ${lib.optionalString cfg.actualAi.enable ''
-        systemctl is-active --quiet mini-pc-ollama mini-pc-ollama-model mini-pc-actual-ai
-        docker inspect --format '{{.State.Health.Status}}' mini-pc-actual-ai-actual-ai-1 | grep -qx healthy
-        docker exec mini-pc-actual-ollama-1 /bin/ollama show ${lib.escapeShellArg cfg.ollamaModel} >/dev/null
-      ''}
       ${lib.optionalString cfg.discordBot.enable ''
         systemctl is-active --quiet mini-pc-discord-bot
         docker inspect --format '{{.State.Health.Status}}' mini-pc-actual-actual-discord-bot-1 | grep -qx healthy
@@ -288,33 +259,7 @@ in
       default = 5006;
       description = "Host-loopback-only port used by native Caddy";
     };
-    actualAi.enable = mkEnableOption "actual-ai and its local Ollama provider";
     discordBot.enable = mkEnableOption "the Actual Discord bot";
-    ollamaModel = mkOption {
-      type = types.str;
-      default = "REPLACE_WITH_TESTED_MODEL";
-      description = "Hardware-tested immutable Ollama model identifier";
-    };
-    ollamaMinimumFreeBytes = mkOption {
-      type = types.ints.unsigned;
-      default = 0;
-      description = "Reviewed free-space floor required before pulling the selected model";
-    };
-    ollamaMemoryLimit = mkOption {
-      type = types.strMatching "^[0-9]+[kKmMgG]$";
-      default = "4g";
-      description = "Reviewed Compose memory limit for CPU-only Ollama";
-    };
-    ollamaCpuLimit = mkOption {
-      type = types.number;
-      default = 1.5;
-      description = "Reviewed Compose CPU limit that preserves SSH and Actual responsiveness";
-    };
-    ollamaModelTimeoutSec = mkOption {
-      type = types.ints.positive;
-      default = 3600;
-      description = "Bounded timeout for an explicit model pull";
-    };
     backupSchedule = mkOption {
       type = types.str;
       default = "03:15";
@@ -342,18 +287,6 @@ in
       {
         assertion = cfg.trustedLanCidrs != [ ] && builtins.all validCidr cfg.trustedLanCidrs;
         message = "my.actualStack.trustedLanCidrs must contain reviewed IPv4/IPv6 CIDRs";
-      }
-      {
-        assertion = !cfg.actualAi.enable || (!placeholder cfg.ollamaModel && cfg.ollamaModel != "");
-        message = "actual-ai requires a reviewed explicit Ollama model";
-      }
-      {
-        assertion = !cfg.actualAi.enable || cfg.ollamaMinimumFreeBytes > 0;
-        message = "actual-ai requires a reviewed non-zero Ollama free-space floor";
-      }
-      {
-        assertion = cfg.ollamaCpuLimit > 0;
-        message = "my.actualStack.ollamaCpuLimit must be positive";
       }
     ]
     ++ builtins.concatMap (
@@ -403,7 +336,6 @@ in
       "d ${cfg.dataRoot} 0750 root caddy -"
       "d ${cfg.dataRoot}/actual 0750 root root -"
       "d ${cfg.dataRoot}/actual/data 0750 1001 1001 -"
-      "d ${cfg.dataRoot}/ollama 0750 root root -"
       "d ${cfg.dataRoot}/caddy 0750 caddy caddy -"
       "d ${cfg.dataRoot}/secrets 0700 root root -"
       "d ${cfg.dataRoot}/backups 0700 root root -"
@@ -438,62 +370,6 @@ in
         RemainAfterExit = true;
         ExecStart = "${composeCommand} up -d --no-build --wait actual-server";
         ExecStop = "${composeCommand} stop -t 30 actual-server";
-        TimeoutStartSec = 300;
-        TimeoutStopSec = 60;
-      };
-    };
-    systemd.services.mini-pc-ollama = mkIf cfg.actualAi.enable {
-      description = "Private Ollama service for actual-ai";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "mini-pc-application.service" ];
-      requires = [ "mini-pc-application.service" ];
-      environment = composeEnvironment;
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        ExecStart = "${composeCommand} --profile ai up -d --no-build --wait ollama";
-        ExecStop = "${composeCommand} --profile ai stop -t 60 ollama";
-        TimeoutStartSec = 300;
-        TimeoutStopSec = 90;
-      };
-    };
-    systemd.services.mini-pc-ollama-model = mkIf cfg.actualAi.enable {
-      description = "Explicit, bounded Ollama model initialization";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "mini-pc-ollama.service" ];
-      requires = [ "mini-pc-ollama.service" ];
-      environment = composeEnvironment;
-      path = with pkgs; [
-        coreutils
-        docker-compose
-      ];
-      script = ''
-        available=$(df --output=avail --block-size=1 ${cfg.dataRoot}/ollama | tail -n 1 | tr -d ' ')
-        required=${toString cfg.ollamaMinimumFreeBytes}
-        if (( available < required )); then
-          echo "Ollama model preflight failed: $available bytes free, $required required" >&2
-          exit 1
-        fi
-        ${composeCommand} --profile ai run --rm ollama-model-init
-        docker exec mini-pc-actual-ollama-1 /bin/ollama show ${lib.escapeShellArg cfg.ollamaModel} >/dev/null
-      '';
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        TimeoutStartSec = cfg.ollamaModelTimeoutSec;
-      };
-    };
-    systemd.services.mini-pc-actual-ai = mkIf cfg.actualAi.enable {
-      description = "Actual transaction classification in dry-run mode";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "mini-pc-ollama-model.service" ];
-      requires = [ "mini-pc-ollama-model.service" ];
-      environment = composeEnvironment;
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        ExecStart = "${composeCommand} --profile ai up -d --no-build --wait actual-ai";
-        ExecStop = "${composeCommand} --profile ai stop -t 30 actual-ai";
         TimeoutStartSec = 300;
         TimeoutStopSec = 60;
       };

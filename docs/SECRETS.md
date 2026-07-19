@@ -26,21 +26,21 @@ Create a local mode-0600 dotenv file without putting values in shell history:
 
 ```bash
 scripts/create-secrets-file.sh \
+  --name DISCORD_TOKEN \
+  --name DISCORD_BANK_NOTIFICATION_CHANNEL \
   --name ACTUAL_PASSWORD \
-  --name ACTUAL_BUDGET_ID
+  --name ACTUAL_FILE
 ```
 
 The parser accepts only these contracts and rejects unknown, duplicate,
 empty-required, or partial input before any remote write:
 
-- actual-ai: `ACTUAL_PASSWORD`, `ACTUAL_BUDGET_ID`, and optional
-  `ACTUAL_E2E_PASSWORD`;
 - Discord bot: `DISCORD_TOKEN`, `DISCORD_BANK_NOTIFICATION_CHANNEL`,
   `ACTUAL_PASSWORD`, `ACTUAL_FILE`, and optional `DISCORD_RECEIPT_CHANNEL`,
   `ACTUAL_ENCRYPTION_PASSWORD`, and `ACTUAL_ACCOUNT`.
 
-Connection URLs, Ollama settings, and dry-run policy are non-secret declarative
-values and cannot be overridden by this file. See `application/.env.example`.
+Connection URLs and service policy are non-secret declarative values and cannot be
+overridden by this file. See `application/.env.example`.
 
 Pass the ignored local file during installation:
 
@@ -53,10 +53,9 @@ nix run .#install -- \
   --application-env-file secrets/compose.env
 ```
 
-The installer stages it in a mode-0700 temporary directory and splits it into only
-the complete service contracts. The target files are
-`/var/lib/mini-pc/secrets/actual-ai.env` and/or `discord-bot.env`, owned by root with
-mode 0600. A service never receives the other service's credentials. Container
+The installer stages it in a mode-0700 temporary directory and renders only the
+complete service contract. The target file is
+`/var/lib/mini-pc/secrets/discord-bot.env`, owned by root with mode 0600. Container
 environment values remain visible to root through Docker inspection.
 
 Do not write secrets in Nix `environment` values, Compose YAML, GitHub variables, or

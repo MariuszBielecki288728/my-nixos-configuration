@@ -18,23 +18,20 @@ def private_dotenv(tmp_path: Path, contents: str) -> Path:
     return path
 
 
-def test_splits_values_into_exact_service_contracts(tmp_path: Path) -> None:
-    """A service never receives unrelated Discord or AI variables."""
+def test_renders_exact_discord_service_contract(tmp_path: Path) -> None:
+    """The optional bot receives only its supported variables."""
     bundle = load_secret_bundle(
         private_dotenv(
             tmp_path,
             "ACTUAL_PASSWORD=shared-secret\n"
-            "ACTUAL_BUDGET_ID=sync-id\n"
-            "ACTUAL_E2E_PASSWORD=e2e\n"
             "DISCORD_TOKEN=token\n"
             "DISCORD_BANK_NOTIFICATION_CHANNEL=bank\n"
+            "DISCORD_RECEIPT_CHANNEL=receipts\n"
             "ACTUAL_FILE=Budget\n",
         )
     )
-    assert set(bundle.files) == {"actual-ai.env", "discord-bot.env"}
-    assert "DISCORD_TOKEN" not in bundle.files["actual-ai.env"]
-    assert "ACTUAL_BUDGET_ID" not in bundle.files["discord-bot.env"]
-    assert "ACTUAL_PASSWORD=shared-secret" in bundle.files["actual-ai.env"]
+    assert set(bundle.files) == {"discord-bot.env"}
+    assert "DISCORD_RECEIPT_CHANNEL=receipts" in bundle.files["discord-bot.env"]
     assert "ACTUAL_PASSWORD=shared-secret" in bundle.files["discord-bot.env"]
 
 
@@ -44,7 +41,9 @@ def test_splits_values_into_exact_service_contracts(tmp_path: Path) -> None:
         ("UNKNOWN=value\n", "unsupported key"),
         ("ACTUAL_PASSWORD=value\n", "no complete service contract"),
         (
-            "ACTUAL_PASSWORD=one\nACTUAL_PASSWORD=two\nACTUAL_BUDGET_ID=id\n",
+            "ACTUAL_PASSWORD=one\nACTUAL_PASSWORD=two\n"
+            "DISCORD_TOKEN=token\nDISCORD_BANK_NOTIFICATION_CHANNEL=bank\n"
+            "ACTUAL_FILE=Budget\n",
             "duplicate key",
         ),
         ("# only a comment\n", "no complete service contract"),

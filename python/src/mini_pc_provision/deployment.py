@@ -30,7 +30,7 @@ class DeployOptions:
     """Operator inputs for a complete or secret-only deployment."""
 
     connection: SshConnection
-    application_env_file: Path
+    application_env_file: Path | None
     host: str | None = None
     admin_key_file: Path | None = None
     secrets_only: bool = False
@@ -47,7 +47,7 @@ class RemoteSecretState:
     installed_files: frozenset[str]
 
 
-def validate_deploy_options(options: DeployOptions) -> SecretBundle:
+def validate_deploy_options(options: DeployOptions) -> SecretBundle | None:
     """Fail before SSH when deployment inputs are incomplete or unsafe."""
     if not DEPLOY_TARGET.fullmatch(options.connection.target):
         raise ProvisioningError("deployment target must be an explicit, valid admin@HOST")
@@ -64,12 +64,16 @@ def validate_deploy_options(options: DeployOptions) -> SecretBundle:
     if options.secrets_only:
         if options.host or options.admin_key_file:
             raise ProvisioningError("--secrets-only does not accept --host or --admin-key-file")
+        if options.application_env_file is None:
+            raise ProvisioningError("--secrets-only requires --application-env-file")
     else:
         if not options.host or not HOST_PATTERN.fullmatch(options.host):
             raise ProvisioningError("full deployment requires a valid --host configuration")
         if options.admin_key_file is None:
             raise ProvisioningError("full deployment requires --admin-key-file")
         read_public_key(options.admin_key_file)
+    if options.application_env_file is None:
+        return None
     return load_secret_bundle(options.application_env_file)
 
 
@@ -252,8 +256,6 @@ def rollback_remote_secrets(connection: SshConnection, state: RemoteSecretState)
 
 def _restart_secret_consumers(connection: SshConnection, filenames: frozenset[str]) -> None:
     units = []
-    if "actual-ai.env" in filenames:
-        units.append("mini-pc-actual-ai.service")
     if "discord-bot.env" in filenames:
         units.append("mini-pc-discord-bot.service")
     enabled_units = [unit for unit in units if _remote_unit_exists(connection, unit)]
@@ -289,6 +291,8 @@ def deploy(options: DeployOptions) -> None:
     _health(options.connection)
     print(json.dumps(preflight, indent=2), file=os.sys.stderr)
     if options.secrets_only:
+        if bundle is None:  # Defensive after validation.
+            raise ProvisioningError("secret-only deployment inputs unexpectedly became unavailable")
         _confirm(options, "SECRET-ONLY DEPLOYMENT: no NixOS generation will be activated")
         with tempfile.TemporaryDirectory(prefix="mini-pc-secrets-") as name:
             state = stage_remote_secrets(options.connection, bundle, Path(name))
@@ -324,8 +328,10 @@ def deploy(options: DeployOptions) -> None:
     old_system = str(preflight["generation"])
     if _remote_unit_exists(options.connection, "mini-pc-actual-backup.service"):
         options.connection.execute("sudo", "systemctl", "start", "mini-pc-actual-backup.service")
-    with tempfile.TemporaryDirectory(prefix="mini-pc-secrets-") as name:
-        secret_state = stage_remote_secrets(options.connection, bundle, Path(name))
+    secret_state = None
+    if bundle is not None:
+        with tempfile.TemporaryDirectory(prefix="mini-pc-secrets-") as name:
+            secret_state = stage_remote_secrets(options.connection, bundle, Path(name))
     try:
         options.connection.execute("sudo", f"{new_system}/bin/switch-to-configuration", "switch")
         _health(options.connection, new_system)
@@ -343,9 +349,11 @@ def deploy(options: DeployOptions) -> None:
                 "caddy",
             )
             print(diagnostics, file=os.sys.stderr)
-        rollback_remote_secrets(options.connection, secret_state)
+        if secret_state is not None:
+            rollback_remote_secrets(options.connection, secret_state)
         options.connection.execute("sudo", f"{old_system}/bin/switch-to-configuration", "switch")
-        _restart_secret_consumers(options.connection, secret_state.installed_files)
+        if secret_state is not None:
+            _restart_secret_consumers(options.connection, secret_state.installed_files)
         _health(options.connection, old_system)
         raise ProvisioningError(
             "deployment failed health checks; prior generation and secrets were restored"

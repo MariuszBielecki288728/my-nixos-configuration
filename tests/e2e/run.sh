@@ -45,7 +45,9 @@ printf '%s\n' \
 printf '%s\n' '{' "  my.rescue.authorizedKeys = [ $key_nix ];" '}' >"$WORK/key.nix"
 printf '%s\n' \
   'ACTUAL_PASSWORD=disposable-test-value' \
-  'ACTUAL_BUDGET_ID=disposable-test-budget' >"$WORK/compose.env"
+  'ACTUAL_FILE=disposable-test-budget' \
+  'DISCORD_TOKEN=disposable-test-token' \
+  'DISCORD_BANK_NOTIFICATION_CHANNEL=disposable-test-channel' >"$WORK/compose.env"
 chmod 0600 "$WORK/compose.env"
 
 nix build "path:$WORK#iso" -o "$WORK/iso-result" --print-build-logs
@@ -86,11 +88,13 @@ CI=true nix run "path:$ROOT#install" -- \
 ssh -i "$WORK/id_ed25519" -p 2222 \
   -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
   admin@127.0.0.1 \
-  "sudo sh -c 'test \"\$(stat -c %a /var/lib/mini-pc/secrets/actual-ai.env)\" = 600 && grep -q \"^ACTUAL_BUDGET_ID=\" /var/lib/mini-pc/secrets/actual-ai.env'"
+  "sudo sh -c 'test \"\$(stat -c %a /var/lib/mini-pc/secrets/discord-bot.env)\" = 600 && grep -q \"^DISCORD_TOKEN=\" /var/lib/mini-pc/secrets/discord-bot.env'"
 
 printf '%s\n' \
   'ACTUAL_PASSWORD=rotated-disposable-test-value' \
-  'ACTUAL_BUDGET_ID=rotated-disposable-test-budget' >"$WORK/rotated.env"
+  'ACTUAL_FILE=rotated-disposable-test-budget' \
+  'DISCORD_TOKEN=rotated-disposable-test-token' \
+  'DISCORD_BANK_NOTIFICATION_CHANNEL=rotated-disposable-test-channel' >"$WORK/rotated.env"
 chmod 0600 "$WORK/rotated.env"
 CI=true nix run "path:$ROOT#deploy" -- \
   --target admin@127.0.0.1 --port 2222 \
@@ -100,7 +104,7 @@ CI=true nix run "path:$ROOT#deploy" -- \
 ssh -i "$WORK/id_ed25519" -p 2222 \
   -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
   admin@127.0.0.1 \
-  "sudo grep -qx 'ACTUAL_BUDGET_ID=rotated-disposable-test-budget' /var/lib/mini-pc/secrets/actual-ai.env"
+  "sudo grep -qx 'DISCORD_TOKEN=rotated-disposable-test-token' /var/lib/mini-pc/secrets/discord-bot.env"
 
 CI=true nix run "path:$ROOT#deploy" -- \
   --target admin@127.0.0.1 --port 2222 --host e2e-target \

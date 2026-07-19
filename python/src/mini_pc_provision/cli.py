@@ -59,9 +59,8 @@ def add_deploy_command(commands: argparse._SubParsersAction) -> None:
     )
     deploy_parser.add_argument(
         "--application-env-file",
-        required=True,
         type=Path,
-        help="private mode-0600 source dotenv file",
+        help="private mode-0600 source dotenv file (required for --secrets-only)",
     )
     deploy_parser.add_argument(
         "--secrets-only",
@@ -265,7 +264,11 @@ def execute(arguments: argparse.Namespace) -> None:
                 admin_key_file=(
                     arguments.admin_key_file.expanduser() if arguments.admin_key_file else None
                 ),
-                application_env_file=arguments.application_env_file.expanduser(),
+                application_env_file=(
+                    arguments.application_env_file.expanduser()
+                    if arguments.application_env_file
+                    else None
+                ),
                 secrets_only=arguments.secrets_only,
                 assume_yes=arguments.yes,
                 ci_disposable=arguments.ci_disposable,
