@@ -3,7 +3,8 @@
 `modules/application.nix` declares Actual Budget behind native Caddy HTTPS. Actual is
 published only on `127.0.0.1:5006`; Caddy is the sole LAN entry point and nftables
 allows TCP 443 only from reviewed `my.actualStack.trustedLanCidrs`. Actual and the
-Discord bot share an internal Compose network. A separate private proxy
+Discord bot share an internal Compose network. The bot also uses a dedicated egress
+bridge to reach Discord without publishing an inbound port. A separate private proxy
 bridge is required for Docker's loopback publication.
 
 Images are fetched at reviewed registry manifest digests into fixed-output Nix
