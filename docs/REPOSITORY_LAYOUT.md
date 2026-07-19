@@ -9,7 +9,8 @@ outputs.
 | `hosts/`, `modules/`, `rescue/` | configuration | yes | Installed hosts, reusable NixOS modules, and the shared rescue system |
 | `python/` | source | yes | UV-managed Python 3.14 provisioning package and tests |
 | `scripts/` | source | yes | Minimal shell helpers where process/device handling is natural |
-| `application/compose.yaml` | configuration | yes | Digest-pinned application topology; contains no secret values |
+| `application/compose.yaml` | configuration | yes | Offline, pinned Actual/AI/bot topology; contains no secret values |
+| `docs/APPLICATION_OPERATIONS.md`, `docs/BACKUP_AND_RESTORE.md` | documentation | yes | Deployment, CA trust, recovery, and data runbooks |
 | `tests/` | source | yes | Fixtures, NixOS VM tests, and disposable provisioning E2E |
 | `artifacts/sessions/` | private runtime | no | Structured evidence from successful and failed provisioning sessions |
 | `pxe/*.example`, `keys.example.nix`, `*.env.example` | example | yes | Templates containing visible placeholders, never live credentials |

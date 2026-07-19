@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
-import stat
 import tempfile
 import time
 from collections.abc import Callable
@@ -19,9 +17,9 @@ from .disks import DiskCandidate, select_disk, validate_candidate_unchanged
 from .errors import ProvisioningError
 from .process import run
 from .remote import SshConnection
+from .secrets import load_secret_bundle
 
 PUBLIC_KEY_PATTERN = re.compile(r"^ssh-(?:ed25519|rsa|ecdsa-[^ ]+) [A-Za-z0-9+/=]+")
-ENV_LINE_PATTERN = re.compile(r"^(?:#.*|\s*|[A-Za-z_][A-Za-z0-9_]*=.*)$")
 HOST_PATTERN = re.compile(r"^[a-zA-Z0-9-]+$")
 
 
@@ -51,20 +49,8 @@ def read_public_key(path: Path) -> str:
 
 
 def validate_environment_file(path: Path) -> None:
-    """Require a private regular dotenv file with syntactically safe lines."""
-    try:
-        details = path.stat()
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError as error:
-        raise ProvisioningError(f"application environment file is not readable: {path}") from error
-    if not stat.S_ISREG(details.st_mode):
-        raise ProvisioningError(f"application environment file is not a regular file: {path}")
-    if stat.S_IMODE(details.st_mode) & 0o077:
-        raise ProvisioningError("application environment file must have mode 0600 or stricter")
-    if any(not ENV_LINE_PATTERN.fullmatch(line) for line in lines):
-        raise ProvisioningError(
-            "application environment file must contain only NAME=value lines, comments, or blanks"
-        )
+    """Compatibility wrapper for the shared strict secret contract."""
+    load_secret_bundle(path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,8 +172,9 @@ def install(options: InstallOptions) -> SshConnection:  # noqa: PLR0912, PLR0915
     if options.assume_yes and not options.ci_disposable:
         raise ProvisioningError("--yes is accepted only together with --ci-disposable")
     admin_key = read_public_key(options.admin_key_file)
-    if options.application_env_file:
-        validate_environment_file(options.application_env_file)
+    secret_bundle = (
+        load_secret_bundle(options.application_env_file) if options.application_env_file else None
+    )
     root = project_root()
     if not (root / "flake.nix").is_file():
         raise ProvisioningError(f"project flake is unavailable: {root}")
@@ -260,12 +247,13 @@ def install(options: InstallOptions) -> SshConnection:  # noqa: PLR0912, PLR0915
         known_hosts = os.environ.get("SSH_USER_KNOWN_HOSTS_FILE")
         if known_hosts:
             anywhere.extend(["--ssh-option", f"UserKnownHostsFile={known_hosts}"])
-        if options.application_env_file:
+        if secret_bundle:
             secret_dir = temporary / "extra-files/var/lib/mini-pc/secrets"
             secret_dir.mkdir(parents=True, mode=0o700)
-            destination = secret_dir / "compose.env"
-            shutil.copyfile(options.application_env_file, destination)
-            destination.chmod(0o600)
+            for filename, contents in secret_bundle.files.items():
+                destination = secret_dir / filename
+                destination.write_text(contents, encoding="utf-8")
+                destination.chmod(0o600)
             anywhere.extend(
                 [
                     "--extra-files",
@@ -302,13 +290,10 @@ def verify_installed(connection: SshConnection, timeout: int = 300) -> None:
     if not connection.wait_until_ready(timeout):
         raise ProvisioningError("installed-system SSH did not become ready")
     deadline = time.monotonic() + timeout
-    health = (
-        "systemctl is-active --quiet sshd docker mini-pc-application && "
-        "curl --fail --silent --max-time 10 http://127.0.0.1:8080/ >/dev/null"
-    )
     while time.monotonic() < deadline:
         try:
-            connection.execute("sh", "-c", health)
+            connection.execute("systemctl", "is-active", "--quiet", "sshd", "docker")
+            connection.execute("sudo", "/run/current-system/sw/bin/mini-pc-application-health")
             print(
                 "Installed system, Docker Compose service, and HTTP health are ready",
                 file=os.sys.stderr,
@@ -316,10 +301,16 @@ def verify_installed(connection: SshConnection, timeout: int = 300) -> None:
             return
         except ProvisioningError:
             time.sleep(5)
-    diagnostics = (
-        "systemctl --no-pager --full status sshd docker mini-pc-application; "
-        "curl --fail --show-error --max-time 10 http://127.0.0.1:8080/"
-    )
     with suppress(ProvisioningError):
-        connection.execute("sh", "-c", diagnostics)
+        connection.execute(
+            "sudo",
+            "systemctl",
+            "--no-pager",
+            "--full",
+            "status",
+            "sshd",
+            "docker",
+            "mini-pc-application",
+            "caddy",
+        )
     raise ProvisioningError(f"installed services did not become healthy within {timeout}s")

@@ -6,7 +6,7 @@ usage() {
 Usage: ${0##*/} ISO RAW_DISK PID_FILE LOG_FILE
 
 Internal E2E helper. Start a detached Q35/OVMF VM with a disposable raw virtio disk,
-SSH forwarded to port 2222, and application HTTP forwarded to port 18080.
+SSH forwarded to port 2222, and application HTTPS forwarded to port 18443.
 E2E_BOOT_ONCE=d boots rescue once (default); c boots only the installed disk.
 EOF
 }
@@ -58,6 +58,6 @@ qemu-system-x86_64 \
   -boot "order=c,once=$boot_once,menu=off" "${cdrom_args[@]}" \
   -drive "file=$disk,if=none,id=target-disk,format=raw" \
   -device "virtio-blk-pci,drive=target-disk,serial=nixos-e2e" \
-  -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22,hostfwd=tcp::18080-:8080 \
+  -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22,hostfwd=tcp::18443-:443 \
   -display none -serial "file:$log_file" -monitor none \
   -daemonize -pidfile "$pid_file"

@@ -1,18 +1,23 @@
-# Application stack
+# Actual Budget application stack
 
-The initial stack is nginx exposed on TCP port 8080. Its image is pinned by digest in
-`compose.yaml`. The Nix module fetches the registry manifest-list digest into a
-fixed-output linux/amd64 archive while building on the development PC, copies that
-archive in the installation closure, and loads it before Compose with
-`pull_policy: never`. The installed target therefore needs no registry or Internet
-access. Persistent application data belongs under `/var/lib/mini-pc`; back up that
-directory before upgrades. Do not put secrets in this directory through Nix, because
-values referenced by Nix expressions can be copied to the world-readable Nix store.
+`modules/application.nix` declares Actual Budget behind native Caddy HTTPS. Actual is
+published only on `127.0.0.1:5006`; Caddy is the sole LAN entry point and nftables
+allows TCP 443 only from reviewed `my.actualStack.trustedLanCidrs`. Actual, Ollama,
+actual-ai, and the Discord bot share an internal Compose network. A separate private
+proxy bridge is required for Docker's loopback publication.
 
-Optional environment values are loaded from
-`/var/lib/mini-pc/secrets/compose.env`. The installer places that file outside the
-Nix store when given `--application-env-file`; see [the secrets guide](../docs/SECRETS.md).
-Services should reference only the variables they need.
+Images are fetched at reviewed registry manifest digests into fixed-output Nix
+archives, copied with the system closure, loaded locally, and used with
+`pull_policy: never`. Deterministic `pinned-<digest-prefix>` local tags are necessary
+because Docker archive loading does not preserve registry `RepoDigests`; the complete
+source and linux/amd64 content digests remain asserted in the Nix image inventory.
 
-Container environment variables remain visible to root through Docker inspection.
-Prefer file-based credentials for future images that support them.
+Actual is the only default service. AI and Discord profiles are independently gated.
+AI uses local Ollama only, starts actual-ai in `dryRun` mode, and pulls the explicitly
+configured model only after a free-space preflight. Do not enable it on a physical
+host until the exact model has been benchmarked there. The Discord image is pinned to
+the reviewed v0.5.0 OCI revision.
+
+Persistent data is under `/var/lib/mini-pc`; root-only secrets and backups are kept in
+separate mode-0700 directories. See [application operations](../docs/APPLICATION_OPERATIONS.md),
+[secrets](../docs/SECRETS.md), and [backup/restore](../docs/BACKUP_AND_RESTORE.md).

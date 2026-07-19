@@ -17,11 +17,13 @@ pkgs.testers.runNixOSTest {
     system.stateVersion = "25.11";
     environment.systemPackages = [
       (pkgs.writeShellScriptBin "run-disko-layout" ''
+
         exec ${config.system.build.diskoScript}
       '')
     ];
   };
   testScript = ''
+
     start_all()
     machine.wait_for_unit("multi-user.target")
     machine.succeed("run-disko-layout")

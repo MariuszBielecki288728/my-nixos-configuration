@@ -2,45 +2,47 @@
 
 ## Threat model
 
-Assume the Git repository, GitHub Actions logs, and every Nix store path are readable
-by people other than the machine administrator. Also assume root on the installed host
-can read application secrets. The workflow therefore keeps plaintext secrets out of
-Git, command-line arguments, generated Nix expressions, and derivations.
-
-This protects against accidental Git/Nix-store disclosure. It does not protect a
-compromised development account, root on the server, or a compromised application
-container that legitimately receives a secret.
+Assume the repository, CI logs, and every Nix store path are readable by people other
+than the administrator. Also assume root and a container receiving a credential can
+read it. The workflow keeps plaintext secrets out of Git, command arguments, Nix
+expressions, derivations, and logs. It does not protect a compromised development
+account, server root, or application container.
 
 ## Rescue key versus admin key
 
-Both inputs are **public** SSH keys; the corresponding private key stays on the
-development PC.
+Both inputs are public SSH keys; their private keys stay on the development PC.
 
-- The rescue key authorizes `root` in the temporary rescue ISO. Supply it while
-  building the ISO with `scripts/build-iso.sh PUBLIC_KEY_FILE`.
-- The admin key authorizes the normal `admin` account after installation. Supply it
-  to `mini-pc-provision install` (or `nix run .#install`) with
-  `--admin-key-file PUBLIC_KEY_FILE`.
-- They may be the same public key for a small personal installation. Separate keys
-  are preferable when rescue access and routine administration have different trust
-  or rotation requirements.
+- The rescue key authorizes temporary `root` access and is supplied to
+  `scripts/build-iso.sh PUBLIC_KEY_FILE`.
+- The admin key authorizes the installed `admin` account and is supplied with
+  `--admin-key-file PUBLIC_KEY_FILE` during installation.
+- They may be the same for a personal host, but separate keys reduce rotation scope.
 
-The `--identity` argument is the local **private** key used to make those SSH
-connections. Never copy it into this repository.
+`--identity` is the local private key for SSH. Never copy it into this repository.
 
-## Docker Compose environment secrets
+## Exact application contracts
 
-Create a local root-only dotenv file interactively; values are read without terminal
-echo and are not placed in shell history:
+Create a local mode-0600 dotenv file without putting values in shell history:
 
 ```bash
 scripts/create-secrets-file.sh \
-  --name DATABASE_PASSWORD \
-  --name API_TOKEN
+  --name ACTUAL_PASSWORD \
+  --name ACTUAL_BUDGET_ID
 ```
 
-The default output is `secrets/compose.env`, which is ignored by Git and mode 0600.
-Pass it during the destructive installation:
+The parser accepts only these contracts and rejects unknown, duplicate,
+empty-required, or partial input before any remote write:
+
+- actual-ai: `ACTUAL_PASSWORD`, `ACTUAL_BUDGET_ID`, and optional
+  `ACTUAL_E2E_PASSWORD`;
+- Discord bot: `DISCORD_TOKEN`, `DISCORD_BANK_NOTIFICATION_CHANNEL`,
+  `ACTUAL_PASSWORD`, `ACTUAL_FILE`, and optional `DISCORD_RECEIPT_CHANNEL`,
+  `ACTUAL_ENCRYPTION_PASSWORD`, and `ACTUAL_ACCOUNT`.
+
+Connection URLs, Ollama settings, and dry-run policy are non-secret declarative
+values and cannot be overridden by this file. See `application/.env.example`.
+
+Pass the ignored local file during installation:
 
 ```bash
 nix run .#install -- \
@@ -51,22 +53,30 @@ nix run .#install -- \
   --application-env-file secrets/compose.env
 ```
 
-The installer stages the file in a mode-0700 temporary directory and gives it to
-`nixos-anywhere --extra-files`. It arrives as
-`/var/lib/mini-pc/secrets/compose.env`, owned by root with mode 0600. Compose loads it
-through `env_file`; services use only variables they explicitly reference.
+The installer stages it in a mode-0700 temporary directory and splits it into only
+the complete service contracts. The target files are
+`/var/lib/mini-pc/secrets/actual-ai.env` and/or `discord-bot.env`, owned by root with
+mode 0600. A service never receives the other service's credentials. Container
+environment values remain visible to root through Docker inspection.
 
-Do not use `environment = { SECRET = "..."; };` in a Nix module: that writes the value
-to the world-readable Nix store. Do not put secrets directly in `compose.yaml`, GitHub
-repository variables, command arguments, or CI logs.
+Do not write secrets in Nix `environment` values, Compose YAML, GitHub variables, or
+commands. Values referenced from Nix enter the world-readable store.
 
 ## Rotation and recovery
 
-The current helper is installation-oriented. Rotate a Compose secret by securely
-replacing `/var/lib/mini-pc/secrets/compose.env` on the host and restarting
-`mini-pc-application.service`. Back up the source secret file in an encrypted password
-manager, not beside the repository.
+Rotate credentials transactionally from the development PC:
 
-For multiple hosts or declarative secret rotation, adopt `sops-nix` with an age key
-stored outside the repository. That requires a separate key-recovery and CI trust
-design; it is intentionally not enabled implicitly here.
+```bash
+nix run .#deploy -- \
+  --target admin@HOST \
+  --identity ~/.ssh/id_ed25519 \
+  --secrets-only \
+  --application-env-file secrets/compose.env
+```
+
+The command validates locally, stages root-owned files atomically, restarts only
+affected optional units, runs health checks, and restores previous files on failure.
+Back up source secrets in an encrypted password manager, not beside the repository.
+
+For multiple hosts or declarative rotation, consider `sops-nix` only after defining
+age-key recovery and CI trust. It is intentionally not enabled implicitly.

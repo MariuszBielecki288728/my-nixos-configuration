@@ -10,6 +10,7 @@ let
   init = "${rescueConfig.system.build.toplevel}/init";
 in
 pkgs.runCommand "nixos-mini-pc-pxe-bundle" { nativeBuildInputs = [ pkgs.jq ]; } ''
+
   mkdir -p $out/http/nixos $out/tftp
   cp ${kernel} $out/http/nixos/bzImage
   cp ${initrd} $out/http/nixos/initrd

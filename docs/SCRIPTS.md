@@ -10,6 +10,7 @@ they supply pinned Python and external runtime tools.
 | `nix run .#select-disk -- …` | no | Apply the fail-closed disk policy to a discovery report |
 | `nix run .#install -- …` | yes, after confirmation | Discover, select, install, reboot, and verify |
 | `nix run .#provision -- …` | yes, after confirmation | Run session-based direct-Ethernet PXE provisioning |
+| `nix run .#deploy -- ...` | remote generation/secret change, after confirmation | Transactionally update an installed host with health rollback |
 | `mini-pc-provision check-prerequisites` | no | Validate binaries, keys, and an optional PXE bundle |
 | `mini-pc-provision start-provisioning-network` | temporary host network | Start isolated DHCP/TFTP/HTTP and write cleanup state |
 | `mini-pc-provision wait-for-rescue` | no | Poll an explicit rescue SSH endpoint |

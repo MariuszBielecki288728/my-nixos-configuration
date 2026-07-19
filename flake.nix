@@ -51,6 +51,7 @@
           inherit name;
           runtimeInputs = [ pythonProvisioning ] ++ runtimeInputs;
           text = ''
+
             export PROJECT_ROOT=${self}
             if [[ -d "$PWD/.git" && -f "$PWD/flake.nix" ]]; then
               export PROJECT_CHECKOUT_ROOT="$PWD"
@@ -94,6 +95,7 @@
           wakeonlan
         ];
         shellHook = ''
+
           export E2E_OVMF_FD_DIR=${pkgs.OVMF.fd}/FV
         '';
       };
@@ -140,6 +142,11 @@
           pkgs.nix
           pkgs.openssh
         ];
+        deploy = pythonCommand "deploy-mini-pc" "deploy" [
+          pkgs.coreutils
+          pkgs.nix
+          pkgs.openssh
+        ];
         nixos-anywhere = nixos-anywhere.packages.${system}.default;
         pxe-bundle = mkPxeBundle self.nixosConfigurations.rescue-pxe.config;
         provision = pythonCommand "provision-mini-pc" "provision" [
@@ -167,6 +174,11 @@
           program = lib.getExe self.packages.${system}.install;
           meta.description = "Perform confirmed remote installation with nixos-anywhere";
         };
+        deploy = {
+          type = "app";
+          program = lib.getExe self.packages.${system}.deploy;
+          meta.description = "Deploy NixOS and application secrets with health rollback";
+        };
         provision = {
           type = "app";
           program = lib.getExe self.packages.${system}.provision;
@@ -183,6 +195,7 @@
         services = pkgs.callPackage ./tests/services.nix { };
         rescue = pkgs.callPackage ./tests/rescue.nix { };
         shell = pkgs.runCommand "shell-checks" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
+
           shellcheck ${./scripts}/*.sh ${./pxe}/build-pxe.sh ${./tests}/*.sh ${./tests/e2e}/*.sh ${./tests/pxe}/*.sh
           touch $out
         '';
@@ -199,14 +212,28 @@
               ];
             }
             ''
+
               PROJECT_ROOT=${self} bash ${./tests}/secrets.sh
               touch $out
             '';
         compose = pkgs.runCommand "compose-check" { nativeBuildInputs = [ pkgs.docker-compose ]; } ''
-          docker-compose -f ${./application/compose.yaml} config --quiet
+
+          mkdir -p "$TMPDIR/secrets"
+          touch "$TMPDIR/secrets/actual-ai.env" "$TMPDIR/secrets/discord-bot.env"
+          sed \
+            -e "s|/var/lib/mini-pc/secrets/actual-ai.env|$TMPDIR/secrets/actual-ai.env|" \
+            -e "s|/var/lib/mini-pc/secrets/discord-bot.env|$TMPDIR/secrets/discord-bot.env|" \
+            ${./application/compose.yaml} > "$TMPDIR/compose.yaml"
+          export ACTUAL_IMAGE=docker.io/example/actual:pinned-aaaaaaaaaaaa
+          export ACTUAL_AI_IMAGE=docker.io/example/ai:pinned-bbbbbbbbbbbb
+          export OLLAMA_IMAGE=docker.io/example/ollama:pinned-cccccccccccc
+          export DISCORD_BOT_IMAGE=ghcr.io/example/bot:pinned-dddddddddddd
+          export ACTUAL_LOOPBACK_PORT=5006 OLLAMA_MODEL=test-model:1 OLLAMA_MEMORY_LIMIT=1g OLLAMA_CPU_LIMIT=1
+          docker-compose -f "$TMPDIR/compose.yaml" --profile ai --profile discord config --quiet
           touch $out
         '';
         workflows = pkgs.runCommand "workflow-checks" { nativeBuildInputs = [ pkgs.actionlint ]; } ''
+
           actionlint -no-color ${./.github/workflows}/*.yaml
           touch $out
         '';

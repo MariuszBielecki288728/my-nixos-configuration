@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +50,26 @@ class SshConnection:
             input_text=input_text,
         )
         return completed.stdout
+
+    def copy_to(self, local_path: Path, remote_path: str) -> None:
+        """Copy one file through the same identity and host-key policy."""
+        arguments = self.arguments()
+        # Drop the ssh executable, port flag, and destination from the SSH vector.
+        common = arguments[1:-3]
+        run(
+            [
+                "scp",
+                *common,
+                "-P",
+                str(self.port),
+                str(local_path),
+                f"{self.target}:{remote_path}",
+            ]
+        )
+
+    def shell_escaped_transport_options(self) -> str:
+        """Render the trusted SSH options for Nix's NIX_SSHOPTS parser."""
+        return shlex.join(self.arguments()[1:-1])
 
     def wait_until_ready(self, timeout: int) -> bool:
         """Poll SSH until it responds or the monotonic deadline expires."""

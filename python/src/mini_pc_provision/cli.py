@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+from .deployment import DeployOptions, deploy
 from .discovery import candidate_summary, discover
 from .disks import select_disk
 from .errors import ProvisioningError
@@ -40,7 +41,44 @@ def add_connection_options(parser: argparse.ArgumentParser, *, positional: bool)
     parser.add_argument("--identity", metavar="FILE", help="private SSH identity on this PC")
 
 
-def build_parser() -> argparse.ArgumentParser:
+def add_deploy_command(commands: argparse._SubParsersAction) -> None:
+    """Add the complete and secret-only installed-host deployment manual."""
+    deploy_parser = commands.add_parser(
+        "deploy",
+        help="deploy a complete NixOS generation or rotate only application secrets",
+        description=(
+            "Preflight an installed host, preserve administrator access, stage root-only "
+            "secrets, activate and health-check a locally built generation, and restore the "
+            "prior generation and secrets if activation fails."
+        ),
+    )
+    add_connection_options(deploy_parser, positional=False)
+    deploy_parser.add_argument("--host", help="flake NixOS configuration (full mode)")
+    deploy_parser.add_argument(
+        "--admin-key-file", type=Path, help="OpenSSH public key preserved in full mode"
+    )
+    deploy_parser.add_argument(
+        "--application-env-file",
+        required=True,
+        type=Path,
+        help="private mode-0600 source dotenv file",
+    )
+    deploy_parser.add_argument(
+        "--secrets-only",
+        action="store_true",
+        help="rotate service secret files without building or activating NixOS",
+    )
+    deploy_parser.add_argument(
+        "--yes", action="store_true", help="bypass confirmation (requires --ci-disposable)"
+    )
+    deploy_parser.add_argument(
+        "--ci-disposable",
+        action="store_true",
+        help="declare a localhost target to be a disposable CI VM",
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one documented parser tree.
     """Build the complete parser; argparse supplies detailed per-command manuals."""
     parser = argparse.ArgumentParser(
         prog="mini-pc-provision",
@@ -106,6 +144,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_connection_options(verify_parser, positional=False)
     verify_parser.add_argument("--timeout", type=int, default=300, help="readiness timeout")
+
+    add_deploy_command(commands)
 
     prerequisite_parser = commands.add_parser(
         "check-prerequisites",
@@ -217,6 +257,20 @@ def execute(arguments: argparse.Namespace) -> None:
         if arguments.timeout <= 0:
             raise ProvisioningError("timeout must be positive")
         verify_installed(connection_from(arguments), arguments.timeout)
+    elif arguments.command == "deploy":
+        deploy(
+            DeployOptions(
+                connection=connection_from(arguments),
+                host=arguments.host,
+                admin_key_file=(
+                    arguments.admin_key_file.expanduser() if arguments.admin_key_file else None
+                ),
+                application_env_file=arguments.application_env_file.expanduser(),
+                secrets_only=arguments.secrets_only,
+                assume_yes=arguments.yes,
+                ci_disposable=arguments.ci_disposable,
+            )
+        )
     elif arguments.command == "check-prerequisites":
         bundle = arguments.bundle.expanduser().resolve() if arguments.bundle else None
         keys = tuple(path.expanduser() for path in arguments.key_file)

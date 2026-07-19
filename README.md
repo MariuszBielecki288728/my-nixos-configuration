@@ -118,11 +118,11 @@ roles and rotation scopes differ.
 ## Application secrets
 
 Plaintext secrets must not be referenced by Nix because Nix store objects are not
-secret. The installer can instead copy a root-only Compose environment file directly
-to the installed filesystem:
+secret. The installer validates an exact application contract, splits it per service,
+and copies root-only files directly to the installed filesystem:
 
 ```bash
-scripts/create-secrets-file.sh --name DATABASE_PASSWORD --name API_TOKEN
+scripts/create-secrets-file.sh --name ACTUAL_PASSWORD --name ACTUAL_BUDGET_ID
 nix run .#install -- ... --application-env-file secrets/compose.env
 ```
 
@@ -293,10 +293,23 @@ If multiple safe internal disks remain, discovery succeeds but installation stop
 Review the report and repeat with `--disk /dev/disk/by-id/REVIEWED_ID`. Never substitute
 `/dev/sda`.
 
-The installed service listens on `http://HOST:8080/`. Its nginx image is pinned by
-registry digest. Application state belongs under `/var/lib/mini-pc`; see
-`application/README.md` for backup and secret guidance. Docker group membership is not
-granted because it is root-equivalent.
+The production profiles intentionally leave the application disabled until a real
+LAN hostname, trusted CIDR, and (for AI) a hardware-tested Ollama model are reviewed.
+Once enabled, Actual is available only at `https://HOSTNAME/` through Caddy's internal
+CA; no application container port is exposed on the LAN. Application state belongs
+under `/var/lib/mini-pc`. See [application operations](docs/APPLICATION_OPERATIONS.md)
+for activation and CA trust, and [backup/restore](docs/BACKUP_AND_RESTORE.md) for data
+recovery. Docker group membership is not granted because it is root-equivalent.
+
+Later upgrades use the transactional deployment command rather than reinstalling:
+
+```bash
+nix run .#deploy -- \
+  --target admin@HOST \
+  --host m710q \
+  --identity ~/.ssh/id_ed25519 \
+  --application-env-file secrets/compose.env
+```
 
 ## PXE/iPXE
 
