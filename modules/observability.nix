@@ -1,6 +1,7 @@
 { ... }:
 {
   services.journald.extraConfig = ''
+
     Storage=persistent
     SystemMaxUse=512M
   '';

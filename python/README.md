@@ -13,3 +13,10 @@ The high-level `provision` command creates a dedicated Ed25519 key pair at
 `~/.ssh/mini_pc_provision_ed25519` when no key arguments are supplied. Explicit
 credentials remain supported by passing the rescue public key, admin public key, and
 private identity together.
+
+`deploy` operates on an already installed host. Full mode performs read-only
+preflight, builds locally, copies the closure, backs up Actual, stages secrets,
+activates the generation, verifies health, and rolls the generation and secrets back
+on failure. `--secrets-only` skips the Nix build and restarts only services whose
+validated secret file changed. Non-interactive `--yes` is accepted only for the
+explicit disposable-CI localhost mode.

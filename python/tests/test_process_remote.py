@@ -43,3 +43,26 @@ def test_ssh_execute_uses_executable_boundary(tmp_path: Path, monkeypatch) -> No
     ssh.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
     assert SshConnection("root@example").execute("true") == "remote-ok"
+
+
+def test_scp_uses_the_same_transport_policy(tmp_path: Path, monkeypatch) -> None:
+    """Secret copies retain the reviewed identity, port, and isolated known-host file."""
+    arguments = tmp_path / "arguments"
+    scp = tmp_path / "scp"
+    scp.write_text(f"#!/bin/sh\nprintf '%s\\n' \"$@\" > '{arguments}'\n", encoding="utf-8")
+    scp.chmod(0o755)
+    identity = tmp_path / "identity"
+    identity.touch()
+    source = tmp_path / "source"
+    source.touch()
+    known_hosts = tmp_path / "known_hosts"
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("SSH_USER_KNOWN_HOSTS_FILE", str(known_hosts))
+    SshConnection("admin@example", 2222, identity).copy_to(
+        source, "/tmp/target"  # noqa: S108 - remote copy fixture.
+    )
+    values = arguments.read_text(encoding="utf-8").splitlines()
+    assert values[values.index("-P") : values.index("-P") + 2] == ["-P", "2222"]
+    assert str(identity) in values
+    assert f"UserKnownHostsFile={known_hosts}" in values
+    assert values[-1] == "admin@example:/tmp/target"

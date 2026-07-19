@@ -7,7 +7,8 @@ Usage: ${0##*/}
 
 Run the full disposable provisioning E2E: build a key-injected rescue ISO, prove a
 fresh 12 GiB raw disk is unchanged by rescue boot, discover/select it, install through
-nixos-anywhere/disko, reboot, and verify SSH plus HTTP health.
+nixos-anywhere/disko, reboot, rotate secrets, exercise a no-op deployment, and verify
+SSH plus LAN HTTPS health.
 
 Run through: nix develop -c timeout 100m tests/e2e/run.sh
 Only .e2e/target.raw may be erased. KVM is preferred; TCG can be very slow.
@@ -42,7 +43,11 @@ printf '%s\n' \
   '  };' \
   '}' >"$WORK/flake.nix"
 printf '%s\n' '{' "  my.rescue.authorizedKeys = [ $key_nix ];" '}' >"$WORK/key.nix"
-printf "%s\n" "E2E_SENTINEL='disposable-test-value'" >"$WORK/compose.env"
+printf '%s\n' \
+  'ACTUAL_PASSWORD=disposable-test-value' \
+  'ACTUAL_FILE=disposable-test-budget' \
+  'DISCORD_TOKEN=disposable-test-token' \
+  'DISCORD_BANK_NOTIFICATION_CHANNEL=disposable-test-channel' >"$WORK/compose.env"
 chmod 0600 "$WORK/compose.env"
 
 nix build "path:$WORK#iso" -o "$WORK/iso-result" --print-build-logs
@@ -83,6 +88,33 @@ CI=true nix run "path:$ROOT#install" -- \
 ssh -i "$WORK/id_ed25519" -p 2222 \
   -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
   admin@127.0.0.1 \
-  "sudo sh -c 'test \"\$(stat -c %a /var/lib/mini-pc/secrets/compose.env)\" = 600 && grep -q \"^E2E_SENTINEL=\" /var/lib/mini-pc/secrets/compose.env'"
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1:18080/ >/dev/null
-echo "full remote provisioning E2E passed"
+  "sudo sh -c 'test \"\$(stat -c %a /var/lib/mini-pc/secrets/discord-bot.env)\" = 600 && grep -q \"^DISCORD_TOKEN=\" /var/lib/mini-pc/secrets/discord-bot.env'"
+
+printf '%s\n' \
+  'ACTUAL_PASSWORD=rotated-disposable-test-value' \
+  'ACTUAL_FILE=rotated-disposable-test-budget' \
+  'DISCORD_TOKEN=rotated-disposable-test-token' \
+  'DISCORD_BANK_NOTIFICATION_CHANNEL=rotated-disposable-test-channel' >"$WORK/rotated.env"
+chmod 0600 "$WORK/rotated.env"
+CI=true nix run "path:$ROOT#deploy" -- \
+  --target admin@127.0.0.1 --port 2222 \
+  --identity "$WORK/id_ed25519" --secrets-only \
+  --application-env-file "$WORK/rotated.env" \
+  --yes --ci-disposable
+ssh -i "$WORK/id_ed25519" -p 2222 \
+  -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+  admin@127.0.0.1 \
+  "sudo grep -qx 'DISCORD_TOKEN=rotated-disposable-test-token' /var/lib/mini-pc/secrets/discord-bot.env"
+
+CI=true nix run "path:$ROOT#deploy" -- \
+  --target admin@127.0.0.1 --port 2222 --host e2e-target \
+  --identity "$WORK/id_ed25519" --admin-key-file "$WORK/id_ed25519.pub" \
+  --application-env-file "$WORK/rotated.env" \
+  --yes --ci-disposable
+ssh -i "$WORK/id_ed25519" -p 2222 \
+  -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+  admin@127.0.0.1 true
+curl --fail --insecure --silent --show-error --max-time 10 \
+  --resolve actual.e2e.test:18443:127.0.0.1 \
+  https://actual.e2e.test:18443/health >/dev/null
+echo "full provisioning, secret rotation, and no-op deployment E2E passed"

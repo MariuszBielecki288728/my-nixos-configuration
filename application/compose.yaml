@@ -1,32 +1,94 @@
+name: mini-pc-actual
+
 services:
-  web:
-    # This platform image digest is loaded from the Nix closure before Compose.
-    image: docker.io/library/nginx@sha256:dc8e6d3967a06c0c9bb10d16cfc5770686de05da4c34d4224ef2aec61142e8f1
+  actual-server:
+    image: ${ACTUAL_IMAGE:?ACTUAL_IMAGE must be a pinned local reference}
     pull_policy: never
-    # The installer may place a root-only dotenv file here. It is deliberately
-    # outside the Nix store and is optional for services that need no secrets.
-    env_file:
-      - path: /var/lib/mini-pc/secrets/compose.env
-        required: false
     restart: unless-stopped
+    user: "1001:1001"
     ports:
-      - "8080:80"
+      - "127.0.0.1:${ACTUAL_LOOPBACK_PORT:?ACTUAL_LOOPBACK_PORT is required}:5006"
+    volumes:
+      - /var/lib/mini-pc/actual/data:/data
     read_only: true
     tmpfs:
-      - /var/cache/nginx
-      - /var/run
+      - /tmp:size=64m,mode=1777
     security_opt:
       - no-new-privileges=true
     cap_drop:
       - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-      - NET_BIND_SERVICE
+    pids_limit: 256
+    mem_limit: 768m
+    cpus: 1.5
+    stop_grace_period: 30s
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:5006/health').then(r=>r.json()).then(v=>{if(v.status!=='UP')process.exit(1)}).catch(()=>process.exit(1))"
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 12
-      start_period: 10s
+      start_period: 20s
+    networks:
+      - proxy
+      - application
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  actual-discord-bot:
+    profiles: [discord]
+    image: ${DISCORD_BOT_IMAGE:?DISCORD_BOT_IMAGE must be a pinned local reference}
+    pull_policy: never
+    restart: unless-stopped
+    depends_on:
+      actual-server:
+        condition: service_healthy
+    env_file:
+      - path: /var/lib/mini-pc/secrets/discord-bot.env
+        required: true
+    environment:
+      ACTUAL_URL: http://actual-server:5006
+      HOME: /tmp
+      OCR_PROVIDER: tesseract
+      OCR_TESSERACT_LANG: pol
+      OCR_TESSERACT_PSM: "6"
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt:
+      - no-new-privileges=true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 768m
+    cpus: 1.0
+    stop_grace_period: 30s
+    healthcheck:
+      # The v0.5.0 bot has no readiness endpoint. This checks its authenticated
+      # application dependency; production acceptance also verifies Discord login.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json,urllib.request; assert json.load(urllib.request.urlopen('http://actual-server:5006/health', timeout=5))['status'] == 'UP'"
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 30s
+    networks:
+      - application
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+networks:
+  proxy:
+  application:
+    internal: true

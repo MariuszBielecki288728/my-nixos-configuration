@@ -1,6 +1,7 @@
 { pkgs, ... }:
 {
   users.motd = ''
+
     NixOS mini-PC rescue environment
     This system never installs or erases disks automatically.
     Connect with: ssh root@nixos-rescue.local
@@ -12,6 +13,7 @@
     wants = [ "network-online.target" ];
     serviceConfig.Type = "oneshot";
     script = ''
+
       echo "Rescue environment is ready; no disk installation service is enabled."
       ${pkgs.iproute2}/bin/ip -brief address
     '';

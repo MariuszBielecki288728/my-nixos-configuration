@@ -13,6 +13,7 @@ pkgs.testers.runNixOSTest {
     system.stateVersion = "25.11";
   };
   testScript = ''
+
     start_all()
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("sshd.service")
