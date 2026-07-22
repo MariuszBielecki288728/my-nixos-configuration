@@ -152,10 +152,20 @@ def build_system(host: str, admin_key_file: Path) -> str:
 
 
 def copy_system(connection: SshConnection, system_path: str) -> None:
-    """Copy an already-built closure without activating it or invoking a shell."""
+    """Copy an unsigned local closure through the target's passwordless sudo boundary."""
     environment = os.environ.copy()
     environment["NIX_SSHOPTS"] = connection.shell_escaped_transport_options()
-    run(["nix", "copy", "--to", f"ssh-ng://{connection.target}", system_path], env=environment)
+    run(
+        [
+            "nix",
+            "copy",
+            "--no-check-sigs",
+            "--to",
+            f"ssh://{connection.target}?remote-program=sudo%20nix-store",
+            system_path,
+        ],
+        env=environment,
+    )
 
 
 def _remote_file_exists(connection: SshConnection, path: str) -> bool:

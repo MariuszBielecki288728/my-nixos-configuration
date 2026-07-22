@@ -150,6 +150,37 @@ def test_remote_preflight_rejects_untrusted_generation_path() -> None:
         remote_preflight(BadGeneration())  # type: ignore[arg-type]
 
 
+def test_copy_system_uses_explicit_remote_sudo_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unsigned local closures import only through authenticated remote sudo."""
+    calls: list[tuple[list[str], dict[str, str]]] = []
+
+    def record(arguments: list[str], *, env: dict[str, str]) -> None:
+        calls.append((arguments, env))
+
+    monkeypatch.setattr(deployment, "run", record)
+    connection = SshConnection(
+        "admin@example.test",
+        port=2222,
+        identity=Path("/operator/deploy-key"),
+    )
+    system = "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-nixos-system-m710q-1"
+
+    deployment.copy_system(connection, system)
+
+    assert calls[0][0] == [
+        "nix",
+        "copy",
+        "--no-check-sigs",
+        "--to",
+        "ssh://admin@example.test?remote-program=sudo%20nix-store",
+        system,
+    ]
+    assert "-i /operator/deploy-key" in calls[0][1]["NIX_SSHOPTS"]
+    assert "-p 2222" in calls[0][1]["NIX_SSHOPTS"]
+
+
 def test_failed_full_activation_restores_generation_and_secrets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
