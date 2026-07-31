@@ -181,6 +181,24 @@ def test_copy_system_uses_explicit_remote_sudo_boundary(
     assert "-p 2222" in calls[0][1]["NIX_SSHOPTS"]
 
 
+def test_health_runs_application_and_monitoring_gates_when_present() -> None:
+    """A full deployment cannot skip a health helper shipped by the candidate."""
+
+    class HealthConnection(RecordingConnection):
+        def execute(self, *command: str, input_text: str | None = None) -> str:
+            del input_text
+            self.commands.append(command)
+            return ""
+
+    connection = HealthConnection()
+    candidate = "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-nixos-system-m710q-1"
+
+    deployment._health(connection, candidate)
+
+    assert ("sudo", f"{candidate}/sw/bin/mini-pc-application-health") in connection.commands
+    assert ("sudo", f"{candidate}/sw/bin/mini-pc-monitoring-health") in connection.commands
+
+
 def test_failed_full_activation_restores_generation_and_secrets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

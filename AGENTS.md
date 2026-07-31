@@ -24,8 +24,8 @@ All source code, comments, documentation and commit messages must be in English.
 
 Before changing anything:
 
-1. Read `IMPLEMENTATION_PLAN.md`.
-2. Read `README.md`.
+1. Read `README.md` and `docs/ARCHITECTURE.md`.
+2. Read `docs/ROADMAP.md` when proposing work beyond the current system.
 3. Inspect `flake.nix`, `flake.lock` and Git status.
 4. Determine whether the shell is WSL2.
 5. Check whether systemd and Nix are already available.
