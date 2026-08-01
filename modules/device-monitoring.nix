@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  netdataPkgs ? pkgs,
   ...
 }:
 let
@@ -30,6 +31,10 @@ let
     );
 
   backend = "${cfg.listenAddress}:${toString cfg.port}";
+  dashboard = pkgs.fetchzip {
+    url = "https://app.netdata.cloud/agent.tar.gz";
+    hash = "sha256-uuZLXiyxE2rIL9yLWYHAzXp5rOv0R3zH/Ss7lIe7Hbk=";
+  };
   goConfig = pkgs.runCommand "mini-pc-netdata-go-config" { } ''
     mkdir -p "$out/go.d/sd"
     cp ${pkgs.writeText "go.d.conf" ''
@@ -141,8 +146,8 @@ in
     };
     package = mkOption {
       type = types.package;
-      default = pkgs.netdataCloud;
-      defaultText = lib.literalExpression "pkgs.netdataCloud";
+      default = netdataPkgs.netdata;
+      defaultText = lib.literalExpression "netdataPkgs.netdata";
       description = "Pinned Netdata package variant with its dashboard bundled locally";
     };
   };
@@ -202,6 +207,8 @@ in
           "config directory" = goConfig;
           "default port" = toString cfg.port;
           "update every" = toString cfg.updateEverySeconds;
+          # The Agent and dashboard assets are separately pinned and served locally.
+          "web files directory" = "${dashboard}/agent";
         };
         db = {
           db = "dbengine";

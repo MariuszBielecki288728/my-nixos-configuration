@@ -1,10 +1,12 @@
-{ pkgs }:
+{
+  lib,
+  netdataPkgs,
+  pkgs,
+}:
 let
-  monitoringPkgs = import pkgs.path {
-    system = pkgs.stdenv.hostPlatform.system;
-    config.allowUnfreePredicate = package: pkgs.lib.getName package == "netdata";
-  };
+  monitoringPkgs = netdataPkgs;
 in
+assert lib.versionAtLeast monitoringPkgs.netdata.version "2.9.0";
 pkgs.testers.runNixOSTest {
   name = "mini-pc-services";
   nodes.machine = {
@@ -28,7 +30,7 @@ pkgs.testers.runNixOSTest {
       retentionDays = 1;
       storageSizeMiB = 256;
       httpsPort = 8443;
-      package = monitoringPkgs.netdataCloud;
+      package = monitoringPkgs.netdata;
     };
     virtualisation.memorySize = 2048;
     virtualisation.diskSize = 6144;
