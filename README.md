@@ -1,87 +1,60 @@
 # Generic NixOS mini-PC provisioning
 
-This repository provisions x86_64 UEFI mini PCs through a shared, non-destructive
-NixOS rescue environment. The Lenovo ThinkCentre M710q (10MQ) is the first target,
-but the host and rescue configurations deliberately contain no Lenovo disk ID, DMI
-gate, interface name, or autonomous installer.
+This repository is a reproducible, safety-conscious NixOS provisioning and operations
+system for x86_64 UEFI mini PCs. The Lenovo ThinkCentre M710q (10MQ) is the first
+production target, while the rescue system, disk policy, host modules, and deployment
+tools remain reusable.
 
-> **Disk safety:** booting rescue never installs anything. Only the explicit remote
-> `install` command can erase a disk. It fails unless discovery identifies one safe
-> disk or the operator supplies a validated `/dev/disk/by-id/...` path, and interactive
-> use requires typing that complete path.
+The current M710q services are:
 
-## Architecture contract
+| Service | Address | Access |
+| --- | --- | --- |
+| Actual Budget | `https://think-centre.home/` | reviewed LAN CIDR through Caddy |
+| Device status | `https://think-centre.home:8443/` | reviewed LAN CIDR through Caddy |
+| SSH | `admin@think-centre.home` | key-only administration |
+
+The status page uses a separate HTTPS origin because Actual installs a root-scoped
+service worker. In browsers that have opened Actual, `/status/` may be handled as an
+Actual route and open `/budget` before the request reaches Caddy.
+
+> **Disk safety:** booting rescue never installs anything. Only an explicit remote
+> installation can erase a disk. Selection fails unless exactly one safe disk remains
+> or the operator supplies a validated `/dev/disk/by-id/...` path, and interactive use
+> requires typing the complete selected path.
+
+## How the system fits together
 
 ```text
 USB ISO | PXE/iPXE | QEMU
           |
           v
-shared rescue system (DHCP, SSH, diagnostics; no installer service)
-          |
-          v  SSH must already work
-discovery JSON 1.0 (read-only snapshot)
+shared rescue system (DHCP, SSH, diagnostics; never auto-installs)
           |
           v
-selector (one stable safe path or fail closed)
+read-only discovery -> fail-closed disk selection -> explicit confirmation
           |
           v
-temporary untracked disk/key module -> pinned nixos-anywhere + disko
+pinned nixos-anywhere + disko -> reboot -> installed-host verification
           |
           v
-reboot -> admin SSH -> systemd/Docker/HTTP verification
+transactional NixOS/application updates with health-check rollback
 ```
 
-The delivery method ends at SSH readiness. Discovery and installation do not inspect
-whether rescue arrived through USB, PXE, or QEMU. The interfaces are:
+See [architecture](docs/ARCHITECTURE.md) for the component contracts and design
+decisions, and [the roadmap](docs/ROADMAP.md) for work intentionally left after MVP.
 
-- `mini-pc-provision discover [--output FILE] [--port PORT] [--identity FILE] user@host`
-  writes discovery schema `1.0`, prints only the report path on stdout, and reports
-  candidates on stderr.
-- `mini-pc-provision select-disk [--disk /dev/disk/by-id/...] REPORT.json` prints exactly one stable
-  path on success. It excludes removable, USB, mounted, unsupported, and unstable-path
-  disks; zero or multiple candidates are errors.
-- `mini-pc-provision install --target root@HOST --host NAME --admin-key-file PUBLIC_KEY [...]` reruns
-  discovery, selection, and confirmation, then re-discovers and compares the stable
-  path, aliases, model, serial, size, and mount state immediately before creating a
-  temporary wrapper flake. `--yes` requires `--ci-disposable`, `CI=true`, QEMU DMI,
-  host `e2e-target`, and the exact `virtio-nixos-e2e` identity. Tracked configuration
-  is never edited, and rescue SSH host keys are copied across the reboot.
-- `mini-pc-provision provision` composes prerequisite, temporary-network, readiness,
-  discovery, selection, installation, verification, and cleanup stages. Supporting
-  stages remain independently callable through their documented subcommands.
-- `mini-pc-provision verify-installed --target admin@HOST [...]` checks SSH, `sshd`, Docker, the
-  Compose unit, and HTTP health.
+## Development setup
 
-Discovery reports contain DMI strings, serial numbers, network addresses, PCI/USB
-lists, mounts, block topology, and by-id mappings. They are mode 0600 under
-`artifacts/discovery/` and ignored by Git. Do not commit them casually.
-
-See [the repository layout](docs/REPOSITORY_LAYOUT.md) for the distinction between
-configuration, examples, generated outputs, and private local files. See
-[the command reference](docs/SCRIPTS.md) for the operator-facing scripts.
-
-## Bootstrap on Ubuntu/WSL2
-
-Keep the checkout in the Linux filesystem, not `/mnt/c`. Verify WSL and systemd:
-
-```bash
-grep -i microsoft /proc/sys/kernel/osrelease
-ps -p 1 -o comm=
-```
-
-If PID 1 is not systemd, set `[boot] systemd=true` in `/etc/wsl.conf`, run
-`wsl --shutdown` from PowerShell, and restart Ubuntu. Install Nix using the official
-multi-user installer, then enable `nix-command flakes` in `/etc/nix/nix.conf`.
-Host-level bootstrap packages are `curl`, `git`, `xz-utils`, `ca-certificates`, and
-`jq`; the flake development shell supplies project tools:
+Keep a WSL2 checkout in the Linux filesystem rather than `/mnt/c`. Nix must have the
+`nix-command` and `flakes` features enabled. Enter the pinned tool environment and run
+the fast checks:
 
 ```bash
 nix develop
 just check-fast
 ```
 
-The provisioning implementation targets Python 3.14 and lives in `python/`. For the
-preferred local virtual environment in the repository root:
+The provisioning package targets Python 3.14. For an editable local environment:
 
 ```bash
 python3 -m venv ./venv
@@ -90,250 +63,82 @@ python3 -m venv ./venv
 ./venv/bin/pytest -c python/pyproject.toml
 ```
 
-`uv.lock` pins development dependencies. Runtime provisioning intentionally uses only
-the Python standard library and external tools supplied by Nix; no environment library
-is added because the commands have no application configuration to deserialize. Run
-`mini-pc-provision --help` and each subcommand's `--help` for detailed manuals.
+Private keys, tokens, passwords, discovery reports, and provisioning sessions are
+never source files. Read [secrets](docs/SECRETS.md) and [repository layout](docs/REPOSITORY_LAYOUT.md)
+before supplying production values.
 
-This repository pins NixOS 25.11, disko, and nixos-anywhere in `flake.lock`. Review any
-lock update before committing it.
+## Provision a machine
 
-## Configure public keys
-
-Private keys, passwords, tokens, and secrets must never be committed. Copy only a real
-public key to a local path, for example `~/.ssh/id_ed25519.pub`. Build an SSH-accessible
-rescue ISO without changing tracked files:
-
-```bash
-scripts/build-iso.sh ~/.ssh/id_ed25519.pub
-```
-
-The raw `nix build .#rescue-iso` output intentionally has no invented key and is useful
-for evaluation/tests only; do not use it for a headless physical boot. The installer
-requires `--admin-key-file` and injects that public key into the installed system.
-The rescue key permits temporary `root` access; the admin key permits routine access
-to the installed non-root `admin` account. They may be the same public key, but their
-roles and rotation scopes differ.
-
-## Application secrets
-
-Plaintext secrets must not be referenced by Nix because Nix store objects are not
-secret. When the optional Discord bot is enabled, the installer validates its exact
-application contract and copies a root-only file directly to the installed filesystem:
-
-```bash
-scripts/create-secrets-file.sh \
-  --name DISCORD_TOKEN \
-  --name DISCORD_BANK_NOTIFICATION_CHANNEL \
-  --name ACTUAL_PASSWORD \
-  --name ACTUAL_FILE
-nix run .#install -- ... --application-env-file secrets/compose.env
-```
-
-Read [the secrets threat model and workflow](docs/SECRETS.md) before adding a service
-that needs credentials.
-
-## Development and tests
-
-```bash
-nix develop
-just fmt
-just test-python
-just check-fast
-nix flake check --print-build-logs
-nix build .#rescue-iso --print-build-logs
-nix build .#pxe-bundle --print-build-logs
-just pxe-test
-```
-
-Checks cover formatting/evaluation, ShellCheck, selector fixtures, target closures,
-Compose and workflow validation, the real disko layout on a disposable VM disk,
-services and SSH policy, and shared rescue behavior including a before/after
-target-disk hash. The full E2E builds a key-injected ISO, boots it with OVMF UEFI and
-QEMU, verifies an unchanged raw disk, discovers and selects it, runs nixos-anywhere,
-reboots from the installed disk, then checks SSH and HTTP:
-
-```bash
-nix develop -c timeout 100m tests/e2e/run.sh
-```
-
-KVM is used when writable; otherwise QEMU TCG is selected and can be very slow. WSL2
-does not reliably expose raw USB devices. Full E2E is mandatory in GitHub Actions and
-may be skipped locally when KVM or time is unavailable, while fast checks should still
-run.
-
-## Direct Ethernet provisioning
-
-The primary transport is one dedicated cable between development PC and target. It
-uses only the isolated `192.168.77.0/24` network: the PC owns `192.168.77.1`, and the
-rescue receives `192.168.77.2` from temporary DHCP.
-
-Isolation prevents the temporary DHCP server from competing with a home router. The
-orchestrator rejects the default-route interface, virtual interfaces, ambiguous
-physical NICs, an existing global IPv4 address, and any local UDP/67 listener. It does
-not rewrite router, Windows, or persistent host network configuration. The Lenovo
-needs no Internet access: TFTP/HTTP serve pinned rescue artifacts locally, and
-`nixos-anywhere` copies the built installation closure over SSH.
-
-Review the dedicated interface with `ip -brief link`, connect the cable, enable UEFI
-PXE in firmware, and run from the repository. Root is required for DHCP/TFTP and
-temporary interface addressing:
+The preferred physical workflow uses a dedicated Ethernet cable and temporary,
+isolated PXE services:
 
 ```bash
 sudo -E just -- provision-m710q \
   --interface REPLACE_WITH_DEDICATED_ETHERNET
 ```
 
-When a Linux PXE host runs in a bridged VM, the physical Windows adapter may also
-request the single DHCP lease. Exclude that adapter at runtime without persisting its
-machine-specific address in the repository:
+The command creates or accepts SSH keys, boots the shared rescue environment, records
+read-only discovery, selects a disk only when safe, asks for the full stable path,
+installs, switches PXE off before reboot, verifies the installed system, and cleans up
+temporary network services. Each attempt leaves a private ignored evidence directory
+under `artifacts/sessions/`.
 
-```bash
-sudo -E just -- provision-m710q \
-  --interface REPLACE_WITH_DEDICATED_ETHERNET \
-  --ignore-client-mac REPLACE_WITH_WINDOWS_ADAPTER_MAC \
-  --target-mac REPLACE_WITH_TARGET_MAC
-```
+USB rescue and lower-level discovery/install commands are also supported. Follow the
+[provisioning guide](docs/PROVISIONING.md); do not improvise a disk path or start the
+temporary DHCP service on an existing LAN.
 
-The exclusion option is repeatable. `--target-mac` reserves `192.168.77.2` for the
-reviewed target and prevents another bridged client from consuming the only lease.
-Each value must be a colon-separated MAC address and is written only to the private
-session's temporary dnsmasq configuration.
+## Update the installed host
 
-The command builds a key-authorized PXE bundle from pinned inputs, optionally sends
-Wake-on-LAN with `--wake-mac`, waits for rescue SSH, displays disk identity, requires
-the full stable path, installs, and verifies SSH, Docker, the Compose unit, and HTTP.
-Installation reboot is deliberately deferred until the temporary network switches
-from PXE/TFTP/HTTP delivery to DHCP-only mode. This lets PXE-first firmware fall
-through to the installed disk while retaining the fixed address for verification.
-Rescue and installed SSH identities use a private per-session trust file that is reset
-at this transition. All temporary network services and the owned address are stopped
-after success or failure.
-
-When all three key flags are omitted, it creates and reuses
-`~/.ssh/mini_pc_provision_ed25519` for the invoking user, including when run through
-`sudo`. To use existing credentials, pass `--identity`, `--rescue-key-file`, and
-`--admin-key-file` together. Private keys are never written under the repository.
-
-Every attempt creates a private ignored directory under `artifacts/sessions/` with
-metadata, environment, prerequisite/network/readiness reports, `discovery.json`,
-`selected-disk.json`, installation and verification reports, a provisioning log, and
-a best-effort journal. Failed sessions remain available; cleanup never removes them.
-
-On the current WSL2 setup only the WSL default-route `eth0` is visible; the Windows
-cable adapter is not exposed as an independent Linux NIC. The safety policy therefore
-refuses physical direct-cable DHCP from this WSL instance. Use native Linux, an
-explicit Windows networking arrangement outside this repository, or another Linux
-PXE host. `just pxe-test` still works in WSL by using a disposable TAP only.
-
-Home-LAN transport remains future work. Until a separate backend exists, use the
-low-level `discover` and `install` commands with a router-provided address; never start
-the direct-Ethernet DHCP backend on an existing LAN.
-
-### Windows and VirtualBox PXE host
-
-When Windows cannot expose its physical Ethernet adapter to WSL2, a Linux VirtualBox
-guest can own the PXE services. Use two guest adapters:
-
-1. NAT for management SSH and Nix downloads.
-2. Bridged to the reviewed physical Ethernet adapter for the isolated target cable.
-
-Inside the guest, identify both interfaces with `ip -brief link` and confirm the
-bridged interface has no default route. Interface names such as `enp0s8` are examples,
-not portable defaults. Pass the reviewed interface, Windows adapter MAC exclusion,
-and target reservation only at runtime. Do not add those machine-specific values to
-tracked configuration.
-
-The VM must remain running through installed-system verification. The orchestrator
-automatically disables PXE while retaining DHCP for the reboot. After verification it
-removes the temporary address and stops all services. If the entire VM is stopped
-manually, the Lenovo can still boot its local disk, but the direct cable has no DHCP
-server and remote SSH will not be available.
-
-### Direct-Ethernet troubleshooting
-
-The private session `provisioning.log` includes orchestrator, DHCP, TFTP, and HTTP
-evidence. These symptoms distinguish the common failure modes:
-
-| Visible symptom | Meaning | Safe response |
-| --- | --- | --- |
-| Ubuntu shows `systemd-networkd-wait-online` and eventually starts | Firmware fell through to the previously installed disk; Ubuntu was only waiting for its network policy. | Check the session log for a target `DHCPDISCOVER`; do not treat this as an installer hang. |
-| DHCP log identifies `MSFT 5.0` or the Windows hostname | The bridged Windows adapter is requesting the isolated lease. | Pass its reviewed MAC with `--ignore-client-mac` and reserve the target with `--target-mac`. |
-| Target PXE request reports `no address available` | The single lease is reserved or stale. | Confirm the target reservation and use the session-local lease implementation; never delete unrelated host DHCP state. |
-| `PXEClient:Arch:00007` appears | A 64-bit UEFI PXE request reached dnsmasq. | Continue with TFTP/iPXE diagnostics; firmware and cabling are working. |
-| NixOS rescue loads again after installation | PXE remained enabled during the reboot. | The high-level workflow now switches to DHCP-only before reboot; with low-level/manual tools, disable PXE delivery or use a one-time local-disk boot. |
-| SSH warns that remote identification changed at `192.168.77.2` | Rescue and installed systems legitimately presented different host keys at the reused fixed address. | Use the high-level session-private trust transition; do not broadly disable host-key checking or delete unrelated global entries. |
-
-Do not infer success from the display alone. Completion requires installed `admin` SSH
-plus active `sshd`, Docker, `mini-pc-application`, and the local HTTP health check.
-
-## Physical installation
-
-One local firmware session may be needed to enable UEFI USB/PXE boot and choose boot
-priority. This design does not rely on AMT, vPro, remote KVM, or remote ISO redirection.
-Wake-on-LAN can be configured later but cannot select a boot device.
-
-1. Build the key-authorized ISO with `scripts/build-iso.sh`.
-2. Write it from native Linux with the guarded command below, or use a trusted Windows
-   image writer. Never assume raw USB access from WSL.
-3. Boot the target, wait for DHCP, then connect as root over SSH.
-4. Run discovery and review the JSON and candidate summary.
-5. Run install and type the complete selected by-id path.
-
-```bash
-scripts/write-usb.sh "$(find -L result/iso -name '*.iso' -print -quit)" /dev/REVIEWED_USB_DEVICE
-
-nix run .#discover -- root@nixos-rescue.local
-
-nix run .#install -- \
-  --target root@nixos-rescue.local \
-  --host m710q \
-  --admin-key-file ~/.ssh/id_ed25519.pub \
-  --identity ~/.ssh/id_ed25519 \
-  --installed-target admin@m710q.local
-```
-
-If multiple safe internal disks remain, discovery succeeds but installation stops.
-Review the report and repeat with `--disk /dev/disk/by-id/REVIEWED_ID`. Never substitute
-`/dev/sda`.
-
-The generic production profile leaves the application disabled until a real LAN
-hostname and trusted CIDR are reviewed. The M710q profile uses the reviewed
-`think-centre.home` hostname and `192.168.1.0/24` LAN and enables both Actual and its
-Discord bot. Actual is available only at `https://think-centre.home/` through Caddy's internal
-CA; no application container port is exposed on the LAN. Application state belongs
-under `/var/lib/mini-pc`. See [application operations](docs/APPLICATION_OPERATIONS.md)
-for activation and CA trust, and [backup/restore](docs/BACKUP_AND_RESTORE.md) for data
-recovery. Docker group membership is not granted because it is root-equivalent.
-
-Later upgrades use the transactional deployment command rather than reinstalling:
+Full updates are built on the development PC and activated only after an explicit
+target confirmation:
 
 ```bash
 nix run .#deploy -- \
-  --target admin@HOST \
+  --target admin@think-centre.home \
   --host m710q \
-  --identity ~/.ssh/id_ed25519
+  --identity ~/.ssh/mini_pc_provision_ed25519 \
+  --admin-key-file ~/.ssh/mini_pc_provision_ed25519.pub
 ```
 
-## PXE/iPXE
+The deployment preserves the admin key, copies immutable images with the system
+closure, takes a pre-activation Actual backup, activates the candidate, and runs both
+application and monitoring health checks. Failure restores the previous generation
+and any replaced secret file. It never prunes generations automatically.
 
-`nix build .#pxe-bundle` generates pinned `ipxe.efi`, separate TFTP and HTTP roots,
-a store-path-correct iPXE script, and a hash manifest from the same rescue module. See
-`pxe/README.md`. CI boots the complete UEFI/DHCP/TFTP/iPXE/HTTP path, reaches SSH and
-discovery, and proves the disposable target disk unchanged. The dnsmasq example never
-rewrites host or router DHCP configuration.
+For routine operations, secret rotation, update policy, rollback, and diagnostics,
+use [application operations](docs/APPLICATION_OPERATIONS.md). Status-page usage and
+sensor details are in [monitoring operations](docs/MONITORING.md).
 
-The M710q (10MQ, Pentium G4400T) has no AMT, vPro, remote KVM, or remote BIOS in this
-design. Wake-on-LAN is optional and cannot choose a boot device. The preferred order
-is Network/PXE, USB, internal SSD, based on current target testing that absent PXE
-falls through; validate the exact firmware before relying on it. USB, internal SSD,
-PXE remains the conservative alternative.
+## Validate changes
 
-## CI and releases
+```bash
+just fmt
+just lint
+just test-python
+just check-fast
+nix flake check --print-build-logs
+nix build .#rescue-iso .#pxe-bundle --print-build-logs
+just pxe-test
+```
 
-`check.yaml` runs flake and VM checks and builds both rescue deliveries.
-`provisioning-e2e.yaml` runs the actual disposable remote provisioning flow with a
-strict timeout and uploads logs. `release-iso.yaml` creates a draft release only for
-tags and requires the repository variable `RESCUE_SSH_PUBLIC_KEY`; it contains a public
-key by design and no production secret. Third-party Actions are pinned to full commit
-SHAs and workflows use minimal permissions.
+The full disposable provisioning test is:
+
+```bash
+nix develop -c timeout 100m tests/e2e/run.sh
+```
+
+KVM is used when available; QEMU TCG is a much slower fallback. See [testing and CI](docs/TESTING.md)
+for the feature matrix, local constraints, and workflow behavior.
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md): system boundaries and accepted decisions.
+- [Provisioning](docs/PROVISIONING.md): PXE, USB, discovery, installation, and troubleshooting.
+- [Application operations](docs/APPLICATION_OPERATIONS.md): deployment, updates, rollback, and incidents.
+- [Monitoring](docs/MONITORING.md): status dashboard, sensors, retention, and troubleshooting.
+- [Backup and restore](docs/BACKUP_AND_RESTORE.md): protected Actual data operations.
+- [Secrets](docs/SECRETS.md): threat model, bootstrap, and rotation.
+- [Command reference](docs/SCRIPTS.md): operator commands and safety classification.
+- [Testing and CI](docs/TESTING.md): automated coverage and release workflows.
+- [Repository layout](docs/REPOSITORY_LAYOUT.md): source, generated, private, and secret paths.
+- [Roadmap](docs/ROADMAP.md): unapplied improvements after MVP.

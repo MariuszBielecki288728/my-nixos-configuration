@@ -19,4 +19,27 @@ git check-ignore -q application/.env.example && {
   echo "tracked environment example is unexpectedly ignored" >&2
   exit 1
 }
+for document in \
+  README.md \
+  docs/ARCHITECTURE.md \
+  docs/PROVISIONING.md \
+  docs/APPLICATION_OPERATIONS.md \
+  docs/MONITORING.md \
+  docs/TESTING.md \
+  docs/ROADMAP.md; do
+  [[ -f $document ]] || {
+    echo "authoritative documentation is missing: $document" >&2
+    exit 1
+  }
+done
+obsolete_document=$(
+  find . \
+    -path './.git' -prune -o \
+    -type f \( -iname '*plan*.md' -o -iname '*investigation*.md' -o -iname '*options*.md' \) \
+    -print -quit
+)
+[[ -z $obsolete_document ]] || {
+  echo "obsolete planning document should be consolidated into docs/ROADMAP.md: $obsolete_document" >&2
+  exit 1
+}
 echo "repository ignore tests passed"

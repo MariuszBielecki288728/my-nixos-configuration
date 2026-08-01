@@ -282,6 +282,9 @@ def _health(connection: SshConnection, system_path: str = "/run/current-system")
         connection.execute("sudo", health)
     else:
         connection.execute("systemctl", "is-active", "--quiet", "sshd", "docker")
+    monitoring_health = f"{system_path}/sw/bin/mini-pc-monitoring-health"
+    if _remote_file_exists(connection, monitoring_health):
+        connection.execute("sudo", monitoring_health)
 
 
 def _confirm(options: DeployOptions, summary: str) -> None:
@@ -357,6 +360,8 @@ def deploy(options: DeployOptions) -> None:
                 "mini-pc-application",
                 "-u",
                 "caddy",
+                "-u",
+                "netdata",
             )
             print(diagnostics, file=os.sys.stderr)
         if secret_state is not None:

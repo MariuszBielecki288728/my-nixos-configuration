@@ -9,6 +9,7 @@
     ../../modules/networking.nix
     ../../modules/docker.nix
     ../../modules/application.nix
+    ../../modules/device-monitoring.nix
     ../../modules/security.nix
     ../../modules/observability.nix
   ];
