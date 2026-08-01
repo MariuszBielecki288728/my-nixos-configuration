@@ -1,7 +1,6 @@
-{ lib, ... }:
+{ ... }:
 {
   imports = [ ../generic-mini-pc ];
-  nixpkgs.config.allowUnfreePredicate = package: lib.getName package == "netdata";
   networking.hostName = "m710q";
 
   my.actualStack = {

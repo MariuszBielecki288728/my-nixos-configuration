@@ -4,6 +4,10 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
 
+    # Netdata 2.9.0 or newer is required for upstream security fixes. Keep this
+    # separate from the stable host base so the monitoring-agent update is scoped.
+    netdata-nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
     disko = {
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -20,6 +24,7 @@
     inputs@{
       self,
       nixpkgs,
+      netdata-nixpkgs,
       disko,
       nixos-anywhere,
       ...
@@ -28,11 +33,14 @@
       system = "x86_64-linux";
       lib = nixpkgs.lib;
       pkgs = import nixpkgs { inherit system; };
+      netdataPkgs = import netdata-nixpkgs { inherit system; };
       mkHost =
         module:
         lib.nixosSystem {
           inherit system;
-          specialArgs = { inherit inputs; };
+          specialArgs = {
+            inherit inputs netdataPkgs;
+          };
           modules = [
             disko.nixosModules.disko
             module
@@ -192,7 +200,7 @@
         generic-system = self.nixosConfigurations.generic-mini-pc.config.system.build.toplevel;
         m710q-system = self.nixosConfigurations.m710q.config.system.build.toplevel;
         disk-layout = pkgs.callPackage ./tests/disk-layout.nix { inherit disko; };
-        services = pkgs.callPackage ./tests/services.nix { };
+        services = pkgs.callPackage ./tests/services.nix { inherit netdataPkgs; };
         rescue = pkgs.callPackage ./tests/rescue.nix { };
         shell = pkgs.runCommand "shell-checks" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
 
