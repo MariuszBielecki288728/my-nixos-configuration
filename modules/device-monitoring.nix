@@ -207,8 +207,6 @@ in
           "config directory" = goConfig;
           "default port" = toString cfg.port;
           "update every" = toString cfg.updateEverySeconds;
-        };
-        web = {
           # The Agent and dashboard assets are separately pinned and served locally.
           "web files directory" = "${dashboard}/agent";
         };
