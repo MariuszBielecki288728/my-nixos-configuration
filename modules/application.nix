@@ -59,11 +59,11 @@ let
     };
     discordBot = {
       imageName = "ghcr.io/mariuszbielecki288728/actual-discord-bot";
-      sourceDigest = "sha256:442c1e202945090a598b7fe646bdff53348120eb1aac9d1949d2334578ea1597";
-      contentDigest = "sha256:442c1e202945090a598b7fe646bdff53348120eb1aac9d1949d2334578ea1597";
-      nixHash = "sha256-2IZkv6lDBSGuSb+lOifh4rx3fYqb7yaPJW2VpQ5ive8=";
-      # OCI revision: a158168f67933d60e180c347550762b632135bf9.
-      version = "v0.6.2";
+      sourceDigest = "sha256:2d59547e4827171ec23a1872d32d67d01eeb0f4b832cbbb5898196343091eb3d";
+      contentDigest = "sha256:2d59547e4827171ec23a1872d32d67d01eeb0f4b832cbbb5898196343091eb3d";
+      nixHash = "sha256-LvoiU+9qvB2bJggrFsJ7ElT2eKGD8J0TVwLjq4RsVEg=";
+      # OCI revision: 665e5f8e8753b2853c46c4a2f23609ec2664b360.
+      version = "v0.6.4";
     };
   };
 
