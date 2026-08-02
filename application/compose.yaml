@@ -69,7 +69,7 @@ services:
     cpus: 1.0
     stop_grace_period: 30s
     healthcheck:
-      # The v0.5.0 bot has no readiness endpoint. This checks its authenticated
+      # The v0.6.0 bot has no readiness endpoint. This checks its authenticated
       # application dependency; production acceptance also verifies Discord login.
       test:
         - CMD
