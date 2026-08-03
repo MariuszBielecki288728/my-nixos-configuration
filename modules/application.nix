@@ -52,18 +52,18 @@ let
   imageDefaults = {
     actual = {
       imageName = "docker.io/actualbudget/actual-server";
-      sourceDigest = "sha256:1449173e2221eb9387da866723808a1fa32a3e92e5cca5df65dc90a532c81ac8";
-      contentDigest = "sha256:2dff01a93343cae5020d3409f6c0b0be92363acb63343e8e5b67ad5c3f172268";
-      nixHash = "sha256-uixGAnKKoSggH8JpBQDTu8MRjGQUm4bLHkMTwaW8+0E=";
-      version = "26.7.0-alpine";
+      sourceDigest = "sha256:36a8ec7fec4c32f1b3fd49af54a36d26e7dcbe5b3bddfcfcf8756c5b1a3c6ecd";
+      contentDigest = "sha256:36a8ec7fec4c32f1b3fd49af54a36d26e7dcbe5b3bddfcfcf8756c5b1a3c6ecd";
+      nixHash = "sha256-Nwfuk6K+d+D++ii5lWmunxTpdN7Kitti8Vpr33AkYrM=";
+      version = "26.8.0-alpine";
     };
     discordBot = {
       imageName = "ghcr.io/mariuszbielecki288728/actual-discord-bot";
-      sourceDigest = "sha256:2d59547e4827171ec23a1872d32d67d01eeb0f4b832cbbb5898196343091eb3d";
-      contentDigest = "sha256:2d59547e4827171ec23a1872d32d67d01eeb0f4b832cbbb5898196343091eb3d";
-      nixHash = "sha256-LvoiU+9qvB2bJggrFsJ7ElT2eKGD8J0TVwLjq4RsVEg=";
-      # OCI revision: 665e5f8e8753b2853c46c4a2f23609ec2664b360.
-      version = "v0.6.4";
+      sourceDigest = "sha256:e90905aa24927c3240a881aee795b859b9c77056c57ea92cebc8deec309ff22b";
+      contentDigest = "sha256:e90905aa24927c3240a881aee795b859b9c77056c57ea92cebc8deec309ff22b";
+      nixHash = "sha256-Ak83U6jMY102LAk1lS2/thtztd+8KR1A4bSIdBT1DXw=";
+      # OCI revision: 9c5e2f9d5d8976ba89febd1800b6fd9679bc34e2.
+      version = "v0.8.1";
     };
   };
 

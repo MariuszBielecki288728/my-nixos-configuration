@@ -18,6 +18,7 @@ def run(
     cwd: Path | None = None,
     env: Mapping[str, str] | None = None,
     input_text: str | None = None,
+    stdin_isolated: bool = False,
     timeout: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run an argument-vector command and translate common OS failures."""
@@ -30,6 +31,7 @@ def run(
             cwd=cwd,
             env=env,
             input=input_text,
+            stdin=subprocess.DEVNULL if stdin_isolated else None,
             text=True,
             timeout=timeout,
         )

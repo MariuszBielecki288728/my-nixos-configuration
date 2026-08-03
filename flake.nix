@@ -51,7 +51,10 @@
         version = "0.1.0";
         src = ./python;
         pyproject = true;
-        build-system = [ pkgs.python314Packages.hatchling ];
+        # The project requires Hatchling >= 1.31.0. The stable host package set
+        # still provides 1.27.0, so take this pure build backend from the
+        # already-pinned unstable input.
+        build-system = [ netdataPkgs.python314Packages.hatchling ];
       };
       pythonCommand =
         name: subcommand: runtimeInputs:

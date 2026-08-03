@@ -156,7 +156,8 @@ def test_copy_system_uses_explicit_remote_sudo_boundary(
     """Unsigned local closures import only through authenticated remote sudo."""
     calls: list[tuple[list[str], dict[str, str]]] = []
 
-    def record(arguments: list[str], *, env: dict[str, str]) -> None:
+    def record(arguments: list[str], *, env: dict[str, str], stdin_isolated: bool = False) -> None:
+        assert stdin_isolated
         calls.append((arguments, env))
 
     monkeypatch.setattr(deployment, "run", record)

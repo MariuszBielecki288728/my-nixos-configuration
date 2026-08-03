@@ -19,7 +19,7 @@ PRIVATE_MODE = 0o600
 
 def test_help_documents_commands() -> None:
     """Top-level help exposes every supported provisioning operation."""
-    completed = subprocess.run(  # noqa: S603
+    completed = subprocess.run(
         [sys.executable, "-m", "mini_pc_provision.cli", "--help"],
         capture_output=True,
         check=True,
