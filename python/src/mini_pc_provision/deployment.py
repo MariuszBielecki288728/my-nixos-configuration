@@ -165,6 +165,7 @@ def copy_system(connection: SshConnection, system_path: str) -> None:
             system_path,
         ],
         env=environment,
+        stdin_isolated=True,
     )
 
 
