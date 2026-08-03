@@ -51,7 +51,7 @@ pkgs.testers.runNixOSTest {
     machine.succeed("sshd -T | grep -qx 'permitrootlogin no'")
     machine.wait_for_unit("docker.service")
     machine.wait_for_unit("mini-pc-image.service")
-    machine.succeed("docker image inspect docker.io/actualbudget/actual-server:pinned-1449173e2221")
+    machine.succeed("docker image inspect docker.io/actualbudget/actual-server:pinned-36a8ec7fec4c")
     machine.wait_for_unit("mini-pc-application.service", timeout=300)
     machine.wait_for_unit("caddy.service", timeout=300)
     machine.wait_for_unit("netdata.service", timeout=300)
