@@ -31,10 +31,6 @@ let
     );
 
   backend = "${cfg.listenAddress}:${toString cfg.port}";
-  dashboard = pkgs.fetchzip {
-    url = "https://app.netdata.cloud/agent.tar.gz";
-    hash = "sha256-uuZLXiyxE2rIL9yLWYHAzXp5rOv0R3zH/Ss7lIe7Hbk=";
-  };
   goConfig = pkgs.runCommand "mini-pc-netdata-go-config" { } ''
     mkdir -p "$out/go.d/sd"
     cp ${pkgs.writeText "go.d.conf" ''
@@ -146,9 +142,9 @@ in
     };
     package = mkOption {
       type = types.package;
-      default = netdataPkgs.netdata;
-      defaultText = lib.literalExpression "netdataPkgs.netdata";
-      description = "Pinned Netdata package variant with its dashboard bundled locally";
+      default = netdataPkgs.netdataCloud;
+      defaultText = lib.literalExpression "netdataPkgs.netdataCloud";
+      description = "Pinned Netdata package variant with an immutable locally bundled dashboard";
     };
   };
 
@@ -207,8 +203,9 @@ in
           "config directory" = goConfig;
           "default port" = toString cfg.port;
           "update every" = toString cfg.updateEverySeconds;
-          # The Agent and dashboard assets are separately pinned and served locally.
-          "web files directory" = "${dashboard}/agent";
+          # netdataCloud bundles the dashboard from Nixpkgs' immutable fixed-output
+          # archive; never fetch a mutable upstream latest endpoint here.
+          "web files directory" = "${cfg.package}/share/netdata/web";
         };
         db = {
           db = "dbengine";

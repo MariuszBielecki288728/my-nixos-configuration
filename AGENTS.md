@@ -181,6 +181,14 @@ Install host-level packages only when required to install or operate Nix itself.
 - Prefer declarative NixOS configuration over shell.
 - Keep `system.stateVersion` stable.
 - Review lock-file updates.
+- Never use a mutable URL (including `latest`, an unversioned download endpoint, or
+  a CDN alias) as a Nix fixed-output source. Use an immutable release asset, a
+  content-addressed revision, or a timestamped archive with a reviewed hash.
+- Before pushing a change that affects a flake input, Nix package, fixed-output fetch,
+  NixOS module, or workflow, run `nix flake check --print-build-logs` from a clean
+  intended diff. If local constraints prevent a complete check, run the smallest
+  affected build, record the limitation in the PR, and do not claim the full check
+  passed.
 - Add assertions for required or dangerous options.
 - Do not edit tracked configuration merely to insert a runtime disk path.
 

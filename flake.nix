@@ -33,7 +33,13 @@
       system = "x86_64-linux";
       lib = nixpkgs.lib;
       pkgs = import nixpkgs { inherit system; };
-      netdataPkgs = import netdata-nixpkgs { inherit system; };
+      # The Cloud UI is a locally bundled, fixed-output dashboard archive. Keep its
+      # NCUL1 allowance scoped to this dedicated package set rather than the host
+      # package policy.
+      netdataPkgs = import netdata-nixpkgs {
+        inherit system;
+        config.allowUnfreePredicate = package: lib.getName package == "netdata";
+      };
       mkHost =
         module:
         lib.nixosSystem {

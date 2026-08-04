@@ -42,4 +42,8 @@ obsolete_document=$(
   echo "obsolete planning document should be consolidated into docs/ROADMAP.md: $obsolete_document" >&2
   exit 1
 }
+if rg --quiet 'app\.netdata\.cloud/agent\.tar\.gz' modules/device-monitoring.nix; then
+  echo "Netdata dashboard must use the immutable Nixpkgs netdataCloud package" >&2
+  exit 1
+fi
 echo "repository ignore tests passed"

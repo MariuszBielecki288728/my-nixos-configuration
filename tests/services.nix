@@ -30,7 +30,7 @@ pkgs.testers.runNixOSTest {
       retentionDays = 1;
       storageSizeMiB = 256;
       httpsPort = 8443;
-      package = monitoringPkgs.netdata;
+      package = monitoringPkgs.netdataCloud;
     };
     virtualisation.memorySize = 2048;
     virtualisation.diskSize = 6144;
