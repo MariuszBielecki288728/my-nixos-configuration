@@ -18,9 +18,14 @@ browser -> HTTPS think-centre.home:8443/ -> Caddy
 Netdata is pinned by `flake.lock` through a dedicated Nixpkgs input. This lets the
 Agent receive current security updates without changing the stable NixOS base. It is
 not installed by an upstream shell script, does not self-update, is not claimed to
-Netdata Cloud, and has anonymous analytics disabled. The Agent and its dashboard
-archive are separately pinned by `flake.lock` and a fixed SHA-256, respectively;
-opening the dashboard uses only those locally served assets and needs no account.
+Netdata Cloud, and has anonymous analytics disabled. The `netdataCloud` package name
+denotes the locally bundled dashboard, not a claimed Agent or Cloud service. Nixpkgs
+pins that dashboard to an immutable archived artifact, so opening the dashboard uses
+only locally served assets and needs no account.
+
+The bundled UI uses Netdata's redistributable NCUL1 license. The Nix flake confines
+the corresponding unfree allowance to its dedicated Netdata package set; it does not
+relax the host's general package policy.
 
 The reusable interface is `my.deviceMonitoring` in
 `modules/device-monitoring.nix`:
@@ -37,7 +42,7 @@ my.deviceMonitoring = {
   updateEverySeconds = 2;
   retentionDays = 14;
   storageSizeMiB = 512;
-  package = netdataPkgs.netdata;
+  package = netdataPkgs.netdataCloud;
 };
 ```
 
