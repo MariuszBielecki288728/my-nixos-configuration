@@ -14,7 +14,7 @@ because Docker archive loading does not preserve registry `RepoDigests`; the com
 source and linux/amd64 content digests remain asserted in the Nix image inventory.
 
 Actual is the only default service. The optional Discord profile is independently
-gated, and its image is pinned to the reviewed v0.8.4 OCI revision.
+gated, and its image is pinned to the reviewed v0.8.5 OCI revision.
 
 Persistent data is under `/var/lib/mini-pc`; root-only secrets and backups are kept in
 separate mode-0700 directories. See [application operations](../docs/APPLICATION_OPERATIONS.md),
